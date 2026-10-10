@@ -26,9 +26,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Budowanie
+        shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log
+
+      - name: Pokaż błędy kompilacji
+        if: failure()
+        shell: bash
+        run: |
+          MSG=$(grep -E "^e: |error:|What went wrong|> " build.log | grep -v "^> Task" | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Kompilacja::$MSG"
 
       - name: Nazwa pliku
         run: cp app/build/outputs/apk/release/app-release.apk MojaTV.apk
