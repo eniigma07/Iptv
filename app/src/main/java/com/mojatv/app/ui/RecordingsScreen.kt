@@ -41,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -86,6 +87,7 @@ fun RecordingsScreen(nav: NavController) {
     var toDelete by remember { mutableStateOf<Recording?>(null) }
     var padBefore by remember { mutableIntStateOf(storage.recPadBefore) }
     var padAfter by remember { mutableIntStateOf(storage.recPadAfter) }
+    var small by remember { mutableStateOf(storage.recSmall) }
     var batteryOk by remember { mutableStateOf(RecordingScheduler.ignoresBatteryOptimizations(context)) }
     var exactOk by remember { mutableStateOf(RecordingScheduler.canScheduleExact(context)) }
 
@@ -136,7 +138,7 @@ fun RecordingsScreen(nav: NavController) {
     fun share(r: Recording) {
         val uri = shareUri(r) ?: return missing()
         val intent = Intent(Intent.ACTION_SEND)
-            .setType("video/mp2t")
+            .setType("video/*")
             .putExtra(Intent.EXTRA_STREAM, uri)
             .putExtra(Intent.EXTRA_TITLE, r.title)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -262,6 +264,21 @@ fun RecordingsScreen(nav: NavController) {
 
             item { Column {
                 SectionTitle("Ustawienia nagrywania")
+                Row(
+                    Modifier.fillMaxWidth().clickable { small = !small; storage.recSmall = small }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Zmniejszaj nagrania")
+                        Text(
+                            if (small) "720p, ok. 600 MB na godzinę. Telefon zmniejsza nagranie na bieżąco, kawałkami po 10 minut."
+                            else "Oryginalna jakość kanału — nawet kilka GB na godzinę.",
+                            color = TextSecondary, fontSize = 12.sp,
+                        )
+                    }
+                    Switch(checked = small, onCheckedChange = { small = it; storage.recSmall = it })
+                }
                 Stepper("Zacznij wcześniej", padBefore) {
                     padBefore = it.coerceIn(0, 30); storage.recPadBefore = padBefore
                 }
@@ -278,7 +295,7 @@ fun RecordingsScreen(nav: NavController) {
                 )
                 val free = MojaTvApp.instance.recordings.freeSpace() / (1024 * 1024 * 1024.0)
                 Text(
-                    "Wolne miejsce: %.1f GB. Godzina nagrania HD zajmuje zwykle 1–3 GB.".format(free),
+                    "Wolne miejsce: %.1f GB.".format(free),
                     color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 Text(
@@ -335,7 +352,9 @@ private fun RecRow(r: Recording, onClick: (() -> Unit)?, action: @Composable () 
                 color = TextSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             val status = when (r.status) {
-                RecStatus.RECORDING -> "Nagrywa · ${r.bytes / (1024 * 1024)} MB"
+                RecStatus.RECORDING ->
+                    if (System.currentTimeMillis() >= r.end) "Kończenie i zmniejszanie nagrania…"
+                    else "Nagrywa · pobrano ${r.bytes / (1024 * 1024)} MB"
                 RecStatus.SCHEDULED -> "Zaplanowane"
                 RecStatus.DONE -> "${r.bytes / (1024 * 1024)} MB · stuknij, aby obejrzeć"
                 RecStatus.FAILED -> "Nieudane" + (r.error?.let { ": $it" } ?: "")

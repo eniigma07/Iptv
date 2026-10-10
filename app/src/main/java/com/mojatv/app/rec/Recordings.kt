@@ -98,6 +98,12 @@ class RecordingStore(private val context: Context) {
         return File(base, "Nagrania").apply { mkdirs() }
     }
 
+    /** Folder roboczy nagrania (kawałki w trakcie nagrywania i zmniejszania). */
+    fun partsDir(id: String): File = File(folder(), "rec_$id").apply { mkdirs() }
+
+    fun partsDir(id: String, create: Boolean): File? =
+        File(folder(), "rec_$id").takeIf { create || it.exists() }?.apply { if (create) mkdirs() }
+
     fun fileFor(r: Recording): File {
         val stamp = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date(r.start))
         val safe = (r.channel.title + " - " + r.title).replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80)

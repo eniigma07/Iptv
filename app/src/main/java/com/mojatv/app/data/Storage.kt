@@ -57,6 +57,11 @@ class Storage(context: Context) {
         get() = prefs.getInt("recPadAfter", 10)
         set(v) = prefs.edit().putInt("recPadAfter", v).apply()
 
+    /** Nagrania zmniejszane w trakcie nagrywania (720p, ok. 600 MB/godz.). */
+    var recSmall: Boolean
+        get() = prefs.getBoolean("recSmall", true)
+        set(v) = prefs.edit().putBoolean("recSmall", v).apply()
+
     /** Ostatnio używany telewizor do wysyłania obrazu (adres opisu DLNA). */
     var castLocation: String?
         get() = prefs.getString("castLocation", null)

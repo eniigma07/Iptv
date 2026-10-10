@@ -24,6 +24,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
@@ -31,9 +32,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
@@ -52,6 +53,8 @@ class RecordingService : Service() {
         private const val CHANNEL_ID = "recording"
         private const val CHANNEL_DONE = "recording_done"
         private const val NOTIF_ID = 4711
+        /** Długość kawałka przy zmniejszaniu nagrań. */
+        private const val PART_MS = 10 * 60_000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -82,7 +85,7 @@ class RecordingService : Service() {
         if (jobs.containsKey(id)) return
         val rec = store.get(id) ?: return
         if (rec.status == RecStatus.CANCELLED || rec.status == RecStatus.DONE) return
-        if (rec.end <= System.currentTimeMillis()) {
+        if (rec.end <= System.currentTimeMillis() && store.partsDir(id, create = false)?.list().isNullOrEmpty()) {
             store.update(id) { it.copy(status = if (it.bytes > 0) RecStatus.DONE else RecStatus.FAILED) }
             return
         }
@@ -98,9 +101,19 @@ class RecordingService : Service() {
     }
 
     private suspend fun record(rec: Recording) {
-        val file = rec.filePath?.let { File(it) } ?: store.fileFor(rec)
-        store.update(rec.id) { it.copy(status = RecStatus.RECORDING, filePath = file.absolutePath, error = null) }
-        var written = if (file.exists()) file.length() else 0L
+        val dir = store.partsDir(rec.id)
+        val small = MojaTvApp.repo.storage.recSmall
+        store.update(rec.id) { it.copy(status = RecStatus.RECORDING, error = null) }
+        val compressor = if (small) PartCompressor(this, scope) else null
+        // po restarcie: niezmniejszone kawałki wracają do kolejki
+        val existing = partFiles(dir)
+        if (compressor != null) {
+            existing.filter { it.extension == "ts" && !File(dir, it.nameWithoutExtension + ".mp4").exists() }
+                .forEach { compressor.enqueue(it) }
+        }
+        val nextIndex = (existing.mapNotNull { it.nameWithoutExtension.drop(1).toIntOrNull() }.maxOrNull() ?: -1) + 1
+        val writer = PartWriter(dir, nextIndex, if (small) PART_MS else Long.MAX_VALUE) { compressor?.enqueue(it) }
+        val stats = Stats(existing.sumOf { it.length() })
         var lastError: String? = null
         var cancelled = false
         try {
@@ -108,45 +121,102 @@ class RecordingService : Service() {
             while (System.currentTimeMillis() < rec.end) {
                 currentCoroutineContext().ensureActive()
                 try {
-                    written += if (isHls) recordHls(rec, file) else recordTs(rec, file)
+                    if (isHls) recordHls(rec, writer, stats) else recordTs(rec, writer, stats)
                     lastError = null
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     lastError = e.message ?: "Błąd połączenia"
                 }
-                store.update(rec.id) { it.copy(bytes = written) }
+                store.update(rec.id) { it.copy(bytes = stats.written) }
                 if (System.currentTimeMillis() < rec.end) delay(3000) // ponowne połączenie
             }
         } catch (e: CancellationException) {
             cancelled = true
         } finally {
-            // sprawdzamy, czy w pliku jest obraz (a nie np. komunikat błędu serwera)
-            val problem = if (written > 0) validate(file) else null
-            val ok = written > 0 && problem == null
-            val moved = if (ok) moveToMovies(file) else null
-            if (!ok && problem != null) runCatching { file.delete() }
-            val err = when {
-                ok -> null
-                problem != null -> problem
-                cancelled -> null
-                else -> lastError ?: "Nie udało się pobrać strumienia"
+            withContext(NonCancellable) {
+                runCatching { writer.close() }
+                updateNotification()
+                compressor?.finish()
+                finish(rec, dir, cancelled, lastError)
             }
-            store.update(rec.id) {
-                it.copy(
-                    status = when {
-                        ok -> RecStatus.DONE
-                        cancelled && problem == null -> RecStatus.CANCELLED
-                        else -> RecStatus.FAILED
-                    },
-                    bytes = if (ok) written else 0,
-                    error = err,
-                    contentUri = moved,
-                    filePath = if (moved != null) null else it.filePath,
-                )
-            }
-            notifyFinished(rec, ok, err)
         }
+    }
+
+    private class Stats(var written: Long)
+
+    private fun partFiles(dir: File): List<File> =
+        (dir.listFiles() ?: emptyArray()).filter { it.name.matches(Regex("p\\d{3}\\.(ts|mp4)")) }.sortedBy { it.name }
+
+    /** Składa kawałki w gotowe nagranie, sprawdza je i przenosi do Filmy/MojaTV. */
+    private fun finish(rec: Recording, dir: File, cancelled: Boolean, lastError: String?) {
+        val parts = partFiles(dir)
+        val mp4 = parts.filter { it.extension == "mp4" }
+        val ts = parts.filter { it.extension == "ts" }
+        val base = store.fileFor(rec).nameWithoutExtension
+        var main: File? = null
+        var extra: File? = null
+        var problem: String? = null
+        try {
+            if (mp4.isNotEmpty()) {
+                main = File(store.folder(), "$base.mp4").also { Compressor.mergeMp4(mp4, it) }
+                if (ts.isNotEmpty()) {
+                    extra = File(store.folder(), "$base (bez zmniejszania).ts").also { Compressor.concatTs(ts, it) }
+                    if (validate(extra) != null) { extra.delete(); extra = null }
+                }
+            } else if (ts.isNotEmpty()) {
+                main = File(store.folder(), "$base.ts").also { Compressor.concatTs(ts, it) }
+                problem = validate(main)
+            }
+        } catch (e: Exception) {
+            problem = "Nie udało się złożyć nagrania: ${e.message ?: e.javaClass.simpleName}"
+        }
+        if (main == null && problem == null && parts.isEmpty() && !cancelled) {
+            problem = "Serwer nie wysłał obrazu (za mało danych). Najczęściej to limit połączeń konta — " +
+                "nie oglądaj tego samego kanału w trakcie nagrywania."
+        }
+        val ok = main != null && main.exists() && problem == null
+        if (!ok) main?.delete()
+        dir.deleteRecursively()
+
+        val size = if (ok) main!!.length() else 0L
+        val moved = if (ok) moveToMovies(main!!) else null
+        val err = when {
+            ok -> null
+            problem != null -> problem
+            cancelled -> null
+            else -> lastError ?: "Nie udało się pobrać strumienia"
+        }
+        store.update(rec.id) {
+            it.copy(
+                status = when {
+                    ok -> RecStatus.DONE
+                    cancelled && problem == null -> RecStatus.CANCELLED
+                    else -> RecStatus.FAILED
+                },
+                bytes = size,
+                error = err,
+                contentUri = moved,
+                filePath = if (ok && moved == null) main!!.absolutePath else null,
+            )
+        }
+        // fragment, którego telefon nie zdołał zmniejszyć — osobna pozycja, żeby nic nie przepadło
+        extra?.let { f ->
+            val extraSize = f.length()
+            val extraUri = moveToMovies(f)
+            store.add(
+                rec.copy(
+                    id = store.newId(),
+                    title = rec.title + " (część bez zmniejszania)",
+                    status = RecStatus.DONE,
+                    bytes = extraSize,
+                    error = null,
+                    contentUri = extraUri,
+                    filePath = if (extraUri == null) f.absolutePath else null,
+                )
+            )
+        }
+        notifyFinished(rec, ok, err)
     }
 
     /**
@@ -182,7 +252,7 @@ class RecordingService : Service() {
             val resolver = contentResolver
             val values = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, file.name)
-                put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp2ts")
+                put(android.provider.MediaStore.Video.Media.MIME_TYPE, if (file.extension == "mp4") "video/mp4" else "video/mp2ts")
                 put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/MojaTV")
                 put(android.provider.MediaStore.Video.Media.IS_PENDING, 1)
             }
@@ -205,75 +275,75 @@ class RecordingService : Service() {
         }
     }
 
-    /** Zapisuje strumień MPEG‑TS do pliku (dopisuje). Zwraca liczbę zapisanych bajtów. */
-    private suspend fun recordTs(rec: Recording, file: File): Long {
+    /** Zapisuje strumień MPEG‑TS (dopisuje do kawałków). */
+    private suspend fun recordTs(rec: Recording, writer: PartWriter, stats: Stats) {
         val call = client.newCall(Request.Builder().url(rec.channel.url).build())
         val job = currentCoroutineContext()[Job]
         val handle = job?.invokeOnCompletion { call.cancel() }
-        var count = 0L
         try {
             call.execute().use { resp ->
                 if (!resp.isSuccessful) throw IOException("Serwer zwrócił błąd HTTP ${resp.code}")
                 val input = resp.body?.byteStream() ?: throw IOException("Pusta odpowiedź")
-                FileOutputStream(file, true).use { out ->
-                    val buf = ByteArray(64 * 1024)
-                    var lastUpdate = System.currentTimeMillis()
-                    while (System.currentTimeMillis() < rec.end && currentCoroutineContext().isActive) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        count += n
-                        if (System.currentTimeMillis() - lastUpdate > 15_000) {
-                            lastUpdate = System.currentTimeMillis()
-                            val total = file.length()
-                            store.update(rec.id) { it.copy(bytes = total) }
-                            updateNotification()
-                        }
+                writer.newConnection()
+                val buf = ByteArray(64 * 1024)
+                var lastUpdate = System.currentTimeMillis()
+                while (System.currentTimeMillis() < rec.end && currentCoroutineContext().isActive) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    writer.write(buf, 0, n)
+                    stats.written += n
+                    if (System.currentTimeMillis() - lastUpdate > 15_000) {
+                        lastUpdate = System.currentTimeMillis()
+                        store.update(rec.id) { it.copy(bytes = stats.written) }
+                        updateNotification()
                     }
                 }
             }
         } finally {
             handle?.dispose()
         }
-        return count
     }
 
-    /** Nagrywanie HLS: pobiera kolejne fragmenty z listy odtwarzania i dokleja je do pliku. */
-    private suspend fun recordHls(rec: Recording, file: File): Long {
+    /** Nagrywanie HLS: pobiera kolejne fragmenty z listy odtwarzania i dokleja je do kawałków. */
+    private suspend fun recordHls(rec: Recording, writer: PartWriter, stats: Stats) {
         var playlistUrl = rec.channel.url
         val seen = LinkedHashSet<String>()
-        var count = 0L
-        FileOutputStream(file, true).use { out ->
-            while (System.currentTimeMillis() < rec.end) {
-                currentCoroutineContext().ensureActive()
-                val (text, finalUrl) = fetchText(playlistUrl)
-                if (text.contains("#EXT-X-STREAM-INF")) {
-                    // lista wariantów — wybieramy najwyższą jakość
-                    playlistUrl = bestVariant(text, finalUrl) ?: throw IOException("Pusta lista HLS")
-                    continue
-                }
-                val target = Regex("#EXT-X-TARGETDURATION:(\\d+)").find(text)?.groupValues?.get(1)?.toLongOrNull() ?: 6
-                val segments = text.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
-                for (seg in segments) {
-                    if (System.currentTimeMillis() >= rec.end) break
-                    val segUrl = URL(URL(finalUrl), seg).toString()
-                    if (!seen.add(segUrl)) continue
-                    client.newCall(Request.Builder().url(segUrl).build()).execute().use { r ->
-                        if (r.isSuccessful) {
-                            r.body?.byteStream()?.use { input ->
-                                count += input.copyTo(out)
+        val buf = ByteArray(64 * 1024)
+        while (System.currentTimeMillis() < rec.end) {
+            currentCoroutineContext().ensureActive()
+            val (text, finalUrl) = fetchText(playlistUrl)
+            if (text.contains("#EXT-X-STREAM-INF")) {
+                // lista wariantów — wybieramy najwyższą jakość
+                playlistUrl = bestVariant(text, finalUrl) ?: throw IOException("Pusta lista HLS")
+                continue
+            }
+            val target = Regex("#EXT-X-TARGETDURATION:(\\d+)").find(text)?.groupValues?.get(1)?.toLongOrNull() ?: 6
+            val segments = text.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+            for (seg in segments) {
+                if (System.currentTimeMillis() >= rec.end) break
+                val segUrl = URL(URL(finalUrl), seg).toString()
+                if (!seen.add(segUrl)) continue
+                client.newCall(Request.Builder().url(segUrl).build()).execute().use { r ->
+                    if (r.isSuccessful) {
+                        r.body?.byteStream()?.use { input ->
+                            writer.rotateIfDue()
+                            writer.newConnection()
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n < 0) break
+                                writer.write(buf, 0, n)
+                                stats.written += n
                             }
                         }
                     }
                 }
-                while (seen.size > 300) seen.remove(seen.first())
-                store.update(rec.id) { it.copy(bytes = file.length()) }
-                updateNotification()
-                if (text.contains("#EXT-X-ENDLIST")) break
-                delay((target * 1000 / 2).coerceIn(1000, 10_000))
             }
+            while (seen.size > 300) seen.remove(seen.first())
+            store.update(rec.id) { it.copy(bytes = stats.written) }
+            updateNotification()
+            if (text.contains("#EXT-X-ENDLIST")) break
+            delay((target * 1000 / 2).coerceIn(1000, 10_000))
         }
-        return count
     }
 
     private fun fetchText(url: String): Pair<String, String> =

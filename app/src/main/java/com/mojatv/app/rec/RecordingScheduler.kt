@@ -85,6 +85,7 @@ object RecordingScheduler {
     fun delete(context: Context, rec: Recording) {
         if (rec.active) cancel(context, rec)
         rec.filePath?.let { runCatching { File(it).delete() } }
+        if (!rec.active) store().partsDir(rec.id, create = false)?.let { runCatching { it.deleteRecursively() } }
         rec.contentUri?.let { runCatching { context.contentResolver.delete(android.net.Uri.parse(it), null, null) } }
         store().remove(rec.id)
     }
@@ -97,6 +98,9 @@ object RecordingScheduler {
                 r.status == RecStatus.SCHEDULED && r.end > now -> schedule(context, r)
                 r.status == RecStatus.SCHEDULED -> store().update(r.id) { it.copy(status = RecStatus.FAILED, error = "Telefon był wyłączony") }
                 r.status == RecStatus.RECORDING && r.end > now -> startNow(context, r.id)
+                // nagranie się skończyło, ale nie zdążyło zostać złożone/zmniejszone
+                r.status == RecStatus.RECORDING && !store().partsDir(r.id, create = false)?.list().isNullOrEmpty() ->
+                    startNow(context, r.id)
                 r.status == RecStatus.RECORDING -> store().update(r.id) {
                     it.copy(status = if (it.bytes > 0) RecStatus.DONE else RecStatus.FAILED)
                 }
