@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,7 +31,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MojaTvTheme {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                // Surface ustawia jasny kolor tekstu na ciemnym tle na wszystkich ekranach
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     AppRoot()
                 }
             }

@@ -6,6 +6,12 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
 
+/** Serwer odpowiada, ale nie jak panel Xtream (np. strona HTML). */
+class NotXtreamException : IOException("Serwer nie odpowiada jak panel Xtream. Sprawdź adres.")
+
+/** Serwer potwierdził, że login lub hasło są złe. */
+class AuthException : IOException("Nieprawidłowy login lub hasło.")
+
 class XtreamApi(private val cfg: SourceConfig) {
 
     val base: String = normalizeServer(cfg.server)
@@ -18,6 +24,9 @@ class XtreamApi(private val cfg: SourceConfig) {
         "$base/player_api.php?username=${enc(user)}&password=${enc(pass)}" +
             (if (action != null) "&action=$action" else "") + extra
 
+    fun m3uUrl(format: String): String =
+        "$base/get.php?username=${enc(user)}&password=${enc(pass)}&type=m3u_plus&output=$format"
+
     fun xmltvUrl(): String = "$base/xmltv.php?username=${enc(user)}&password=${enc(pass)}"
 
     fun liveUrl(streamId: String, ext: String) = "$base/live/$user/$pass/$streamId.$ext"
@@ -29,11 +38,10 @@ class XtreamApi(private val cfg: SourceConfig) {
         val root = try {
             JSONObject(text)
         } catch (e: Exception) {
-            throw IOException("Serwer nie odpowiada jak panel Xtream. Sprawdź adres.")
+            throw NotXtreamException()
         }
-        val info = root.optJSONObject("user_info")
-            ?: throw IOException("Brak danych konta w odpowiedzi serwera.")
-        if (info.optInt("auth", 0) != 1) throw IOException("Nieprawidłowy login lub hasło.")
+        val info = root.optJSONObject("user_info") ?: throw NotXtreamException()
+        if (info.optInt("auth", 0) != 1) throw AuthException()
         return AccountInfo(
             status = info.str("status"),
             expiresAt = info.str("exp_date")?.toLongOrNull()?.times(1000),

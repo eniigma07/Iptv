@@ -10,8 +10,16 @@ import java.io.InputStream
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 
+/** Serwer odpowiedział kodem błędu HTTP (np. 403, 404). */
+class HttpStatusException(val code: Int) : IOException("Serwer zwrócił błąd HTTP $code")
+
 object Http {
     const val DEFAULT_USER_AGENT = "VLC/3.0.20 LibVLC/3.0.20"
+    const val CHROME_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36"
+
+    /** Nazwy, pod którymi aplikacja próbuje się przedstawić, gdy serwer ją blokuje. */
+    val FALLBACK_USER_AGENTS = listOf(DEFAULT_USER_AGENT, "IPTVSmartersPro", "okhttp/4.12.0", CHROME_USER_AGENT)
 
     @Volatile
     var userAgent: String = DEFAULT_USER_AGENT
@@ -32,7 +40,7 @@ object Http {
     suspend fun getString(url: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Serwer zwrócił błąd HTTP ${response.code}")
+            if (!response.isSuccessful) throw HttpStatusException(response.code)
             response.body?.string() ?: ""
         }
     }
@@ -44,7 +52,7 @@ object Http {
     suspend fun <T> withStream(url: String, block: (InputStream) -> T): T = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Serwer zwrócił błąd HTTP ${response.code}")
+            if (!response.isSuccessful) throw HttpStatusException(response.code)
             val body = response.body ?: throw IOException("Pusta odpowiedź serwera")
             block(maybeGunzip(body.byteStream()))
         }

@@ -89,21 +89,137 @@ class Repository(context: Context) {
     // ---------------- Logowanie ----------------
 
     /** Sprawdza dane, zapisuje źródło i wczytuje katalog. Rzuca wyjątek z opisem błędu. */
-    suspend fun signIn(cfg: SourceConfig) {
-        when (cfg.type) {
-            SourceType.XTREAM -> {
-                if (cfg.server.isBlank() || cfg.username.isBlank()) throw IOException("Uzupełnij adres serwera i login.")
-                _account.value = XtreamApi(cfg).login()
+    suspend fun signIn(input: SourceConfig) {
+        var cfg = input
+        try {
+            when (cfg.type) {
+                SourceType.XTREAM -> {
+                    if (cfg.server.isBlank() || cfg.username.isBlank()) throw IOException("Uzupełnij adres serwera i login.")
+                    cfg = connectXtream(cfg.copy(server = XtreamApi.normalizeServer(cfg.server)))
+                }
+                SourceType.M3U -> {
+                    if (!cfg.m3uUrl.startsWith("http", ignoreCase = true)) throw IOException("Podaj pełny link do playlisty (http…).")
+                }
             }
-            SourceType.M3U -> {
-                if (!cfg.m3uUrl.startsWith("http", ignoreCase = true)) throw IOException("Podaj pełny link do playlisty (http…).")
-            }
+        } catch (e: Exception) {
+            throw IOException(friendlyError(e), e)
         }
         storage.source = cfg
         _state.value = LoadState.Idle
         loadNow(force = true)
         val s = _state.value
         if (s is LoadState.Error) throw IOException(s.message)
+    }
+
+    /**
+     * Próbuje zalogować się do Xtream na kilka sposobów:
+     * 1) https:// → http://, gdy serwer nie obsługuje szyfrowania,
+     * 2) różne nazwy aplikacji (User-Agent), gdy serwer blokuje nieznane aplikacje,
+     * 3) gdy logowanie Xtream jest niedostępne — playlista M3U z tymi samymi danymi.
+     * Zwraca konfigurację, która zadziałała.
+     */
+    private suspend fun connectXtream(cfg: SourceConfig): SourceConfig {
+        val servers = buildList {
+            add(cfg.server)
+            if (cfg.server.startsWith("https://", ignoreCase = true)) add("http://" + cfg.server.substring(8))
+        }
+        val agents = (listOf(storage.userAgent) + Http.FALLBACK_USER_AGENTS).distinct()
+        val originalAgent = Http.userAgent
+        var lastError: Exception? = null
+        var reachableServer: String? = null
+
+        for (server in servers) {
+            val candidate = cfg.copy(server = server)
+            for (ua in agents) {
+                Http.userAgent = ua
+                try {
+                    _account.value = XtreamApi(candidate).login()
+                    storage.userAgent = ua
+                    return candidate
+                } catch (e: AuthException) {
+                    Http.userAgent = originalAgent
+                    throw e
+                } catch (e: Exception) {
+                    lastError = e
+                    when {
+                        isTlsProblem(e) -> break // ten adres nie działa — następny serwer
+                        e is HttpStatusException || e is NotXtreamException -> reachableServer = server
+                        else -> {
+                            Http.userAgent = originalAgent
+                            throw e // brak sieci, zły adres itp.
+                        }
+                    }
+                }
+            }
+        }
+
+        // Logowanie Xtream niedostępne — spróbuj playlisty get.php
+        val server = reachableServer
+        if (server != null) {
+            val api = XtreamApi(cfg.copy(server = server))
+            val url = api.m3uUrl(storage.liveFormat)
+            for (ua in agents) {
+                Http.userAgent = ua
+                try {
+                    val looksLikeM3u = Http.withStream(url) { input ->
+                        val head = ByteArray(512)
+                        val n = input.read(head)
+                        n > 0 && String(head, 0, n, Charsets.UTF_8).trimStart('﻿', ' ', '\r', '\n').startsWith("#EXTM3U")
+                    }
+                    if (looksLikeM3u) {
+                        storage.userAgent = ua
+                        _account.value = null
+                        return cfg.copy(
+                            type = SourceType.M3U,
+                            server = server,
+                            m3uUrl = url,
+                            epgUrl = cfg.epgUrl.ifBlank { api.xmltvUrl() },
+                        )
+                    }
+                } catch (e: Exception) {
+                    lastError = e
+                }
+            }
+        }
+
+        Http.userAgent = originalAgent
+        val err = lastError
+        if (err is HttpStatusException || err is NotXtreamException) {
+            throw IOException(
+                "Serwer odpowiada, ale nie przyjmuje logowania pod tym adresem" +
+                    (if (err is HttpStatusException) " (HTTP ${err.code})" else "") +
+                    ". Sprawdź u dostawcy dokładny adres serwera (z portem) albo poproś o link M3U i użyj zakładki „Playlista M3U”."
+            )
+        }
+        throw err ?: IOException("Nie udało się połączyć z serwerem.")
+    }
+
+    private fun isTlsProblem(e: Throwable): Boolean {
+        var t: Throwable? = e
+        while (t != null) {
+            if (t is javax.net.ssl.SSLException) return true
+            t = t.cause
+        }
+        return false
+    }
+
+    /** Zamienia techniczne błędy sieci na zrozumiały komunikat. */
+    fun friendlyError(e: Throwable): String {
+        var t: Throwable? = e
+        while (t != null) {
+            when (t) {
+                is javax.net.ssl.SSLException ->
+                    return "Błąd połączenia szyfrowanego. Spróbuj adresu zaczynającego się od http:// zamiast https://."
+                is java.net.UnknownHostException ->
+                    return "Nie znaleziono serwera. Sprawdź adres i połączenie z internetem."
+                is java.net.SocketTimeoutException ->
+                    return "Serwer nie odpowiada (przekroczony czas). Spróbuj ponownie za chwilę."
+                is java.net.ConnectException ->
+                    return "Nie można połączyć się z serwerem. Sprawdź adres i port."
+            }
+            t = t.cause
+        }
+        return e.message ?: "Wystąpił nieznany błąd."
     }
 
     fun signOut() {
@@ -141,7 +257,7 @@ class Repository(context: Context) {
                     _epg.value = emptyMap()
                 }
             } catch (e: Exception) {
-                _state.value = LoadState.Error(e.message ?: "Nie udało się wczytać playlisty.")
+                _state.value = LoadState.Error(friendlyError(e))
             }
         }
     }
