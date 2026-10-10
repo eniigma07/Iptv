@@ -44,7 +44,7 @@ data class Recording(
         fun fromJson(o: JSONObject): Recording? = try {
             Recording(
                 id = o.getString("id"),
-                channel = PlayItem.fromJson(o.getJSONObject("channel")) ?: return null,
+                channel = PlayItem.fromJson(o.getJSONObject("channel")) ?: throw IllegalStateException("brak kanału"),
                 title = o.getString("title"),
                 start = o.getLong("start"),
                 end = o.getLong("end"),
