@@ -2,7 +2,11 @@ name: Zbuduj APK
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -29,3 +33,14 @@ jobs:
         with:
           name: MojaTV-apk
           path: MojaTV.apk
+
+      # Najnowsza wersja zawsze pod tym samym linkiem:
+      # https://github.com/<konto>/<repo>/releases/latest/download/MojaTV.apk
+      - name: Wydanie do pobrania na telefon
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: MojaTV ${{ github.run_number }}
+          body: "Pobierz MojaTV.apk na telefon i zainstaluj."
+          files: MojaTV.apk
+          make_latest: true

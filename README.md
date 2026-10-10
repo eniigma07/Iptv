@@ -2,6 +2,12 @@
 
 Live TV z programem (EPG), filmy, seriale, show i radio. Obsługuje logowanie Xtream Codes oraz playlisty M3U.
 
+## Pobierz najnowszą wersję na telefon
+
+https://github.com/eniigma07/Iptv/releases/latest/download/MojaTV.apk
+
+Każda zmiana w kodzie automatycznie buduje nową wersję pod tym samym linkiem.
+
 ## Jak zbudować plik APK (bez instalowania niczego)
 
 1. Załóż darmowe konto na github.com i utwórz nowe repozytorium (np. `mojatv`, może być prywatne).
