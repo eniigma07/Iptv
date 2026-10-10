@@ -99,6 +99,25 @@ class Repository(context: Context) {
                 }
                 SourceType.M3U -> {
                     if (!cfg.m3uUrl.startsWith("http", ignoreCase = true)) throw IOException("Podaj pełny link do playlisty (http…).")
+                    var url = cfg.m3uUrl.trim()
+                    val agents = (listOf(storage.userAgent) + Http.FALLBACK_USER_AGENTS).distinct()
+                    var ua = findAgentForM3u(url, agents)
+                    if (ua == null && url.startsWith("https://", ignoreCase = true) && lastM3uError?.let { isTlsProblem(it) } == true) {
+                        url = "http://" + url.substring(8)
+                        ua = findAgentForM3u(url, agents)
+                    }
+                    if (ua == null) {
+                        val err = lastM3uError
+                        if (err is HttpStatusException) {
+                            throw IOException(
+                                "Serwer odrzuca ten link (HTTP ${err.code}), także przy podszyciu się pod popularne aplikacje IPTV. " +
+                                    "Sprawdź u dostawcy, czy konto jest aktywne i czy link jest aktualny."
+                            )
+                        }
+                        throw err ?: IOException("Pod tym linkiem nie ma playlisty M3U.")
+                    }
+                    storage.userAgent = ua
+                    cfg = cfg.copy(m3uUrl = url)
                 }
             }
         } catch (e: Exception) {
@@ -158,28 +177,18 @@ class Repository(context: Context) {
         if (server != null) {
             val api = XtreamApi(cfg.copy(server = server))
             val url = api.m3uUrl(storage.liveFormat)
-            for (ua in agents) {
-                Http.userAgent = ua
-                try {
-                    val looksLikeM3u = Http.withStream(url) { input ->
-                        val head = ByteArray(512)
-                        val n = input.read(head)
-                        n > 0 && String(head, 0, n, Charsets.UTF_8).trimStart('﻿', ' ', '\r', '\n').startsWith("#EXTM3U")
-                    }
-                    if (looksLikeM3u) {
-                        storage.userAgent = ua
-                        _account.value = null
-                        return cfg.copy(
-                            type = SourceType.M3U,
-                            server = server,
-                            m3uUrl = url,
-                            epgUrl = cfg.epgUrl.ifBlank { api.xmltvUrl() },
-                        )
-                    }
-                } catch (e: Exception) {
-                    lastError = e
-                }
+            val ua = findAgentForM3u(url, agents)
+            if (ua != null) {
+                storage.userAgent = ua
+                _account.value = null
+                return cfg.copy(
+                    type = SourceType.M3U,
+                    server = server,
+                    m3uUrl = url,
+                    epgUrl = cfg.epgUrl.ifBlank { api.xmltvUrl() },
+                )
             }
+            lastError = lastM3uError ?: lastError
         }
 
         Http.userAgent = originalAgent
@@ -192,6 +201,30 @@ class Repository(context: Context) {
             )
         }
         throw err ?: IOException("Nie udało się połączyć z serwerem.")
+    }
+
+    private var lastM3uError: Exception? = null
+
+    /** Sprawdza, z którą nazwą aplikacji serwer oddaje playlistę. Ustawia ją i zwraca, albo null. */
+    private suspend fun findAgentForM3u(url: String, agents: List<String>): String? {
+        lastM3uError = null
+        val original = Http.userAgent
+        for (ua in agents) {
+            Http.userAgent = ua
+            try {
+                val ok = Http.withStream(url) { input ->
+                    val head = ByteArray(512)
+                    val n = input.read(head)
+                    n > 0 && String(head, 0, n, Charsets.UTF_8).trimStart('\uFEFF', ' ', '\r', '\n').startsWith("#EXTM3U")
+                }
+                if (ok) return ua
+            } catch (e: Exception) {
+                lastM3uError = e
+                if (e !is HttpStatusException) break // brak sieci, zły adres — nie ma sensu próbować dalej
+            }
+        }
+        Http.userAgent = original
+        return null
     }
 
     private fun isTlsProblem(e: Throwable): Boolean {

@@ -19,7 +19,18 @@ object Http {
         "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36"
 
     /** Nazwy, pod którymi aplikacja próbuje się przedstawić, gdy serwer ją blokuje. */
-    val FALLBACK_USER_AGENTS = listOf(DEFAULT_USER_AGENT, "IPTVSmartersPro", "okhttp/4.12.0", CHROME_USER_AGENT)
+    val FALLBACK_USER_AGENTS = listOf(
+        DEFAULT_USER_AGENT,
+        "IPTVSmartersPro",
+        "IPTV Smarters Pro",
+        "TiviMate/4.7.0 (Android 11)",
+        "XCIPTV",
+        "Dalvik/2.1.0 (Linux; U; Android 13; SM-S911B Build/TP1A.220624.014)",
+        "Lavf/58.76.100",
+        "Kodi/20.2 (Linux; Android 13) Android/13.0.0 Sys_CPU/aarch64 App_Bitness/64 Version/20.2",
+        "okhttp/4.12.0",
+        CHROME_USER_AGENT,
+    )
 
     @Volatile
     var userAgent: String = DEFAULT_USER_AGENT
