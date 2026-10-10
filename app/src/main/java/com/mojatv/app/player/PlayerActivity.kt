@@ -24,16 +24,33 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay30
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +75,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.mojatv.app.MojaTvApp
+import com.mojatv.app.cast.CastPosition
+import com.mojatv.app.cast.Dlna
+import com.mojatv.app.cast.Renderer
 import com.mojatv.app.data.EpgProgram
 import com.mojatv.app.data.PlayItem
 import com.mojatv.app.ui.theme.MojaTvTheme
@@ -87,6 +107,15 @@ class PlayerActivity : ComponentActivity() {
     private var liveRetries = 0
     private var epgJob: Job? = null
     private var retryJob: Job? = null
+
+    // ---- wysyłanie na telewizor (DLNA) ----
+    private var castTarget by mutableStateOf<Renderer?>(null)
+    private var castDialog by mutableStateOf(false)
+    private var castBusy by mutableStateOf(false)
+    private var castError by mutableStateOf<String?>(null)
+    private var castPos by mutableStateOf<CastPosition?>(null)
+    private var castJob: Job? = null
+    private var castPollJob: Job? = null
 
     private val current: PlayItem? get() = items.getOrNull(index)
 
@@ -132,6 +161,13 @@ class PlayerActivity : ComponentActivity() {
             item.isLive -> 0L
             startAt >= 0 -> startAt
             else -> repo.storage.progress.value[item.key]?.takeIf { !it.finished }?.position ?: 0L
+        }
+        val tv = castTarget
+        if (tv != null) {
+            player.stop()
+            castItem(tv, item, start)
+            loadPrograms(item)
+            return
         }
         player.setMediaItem(PlayerFactory.mediaItem(item), start)
         player.prepare()
@@ -208,9 +244,95 @@ class PlayerActivity : ComponentActivity() {
         else -> "Nie udało się odtworzyć (${e.errorCodeName})."
     }
 
+    // ---------------- Telewizor ----------------
+
+    private fun startCasting(tv: Renderer) {
+        castDialog = false
+        val item = current ?: return
+        val pos = if (item.isLive) 0L else player.currentPosition
+        saveProgress()
+        player.pause()
+        castTarget = tv
+        repo.storage.castLocation = tv.location
+        castItem(tv, item, pos)
+        startCastPolling()
+    }
+
+    private fun castItem(tv: Renderer, item: PlayItem, startMs: Long) {
+        castJob?.cancel()
+        castError = null
+        castPos = null
+        castBusy = true
+        castJob = lifecycleScope.launch {
+            try {
+                Dlna.play(tv, item, startMs)
+            } catch (e: Exception) {
+                castError = (e.message ?: "Nie udało się wysłać na telewizor.") +
+                    "\nSprawdź, czy telewizor jest włączony i w tej samej sieci Wi‑Fi."
+            } finally {
+                castBusy = false
+            }
+        }
+    }
+
+    private fun startCastPolling() {
+        castPollJob?.cancel()
+        castPollJob = lifecycleScope.launch {
+            var wasPlaying = false
+            while (isActive) {
+                delay(2000)
+                val tv = castTarget ?: break
+                if (castBusy) continue
+                val p = runCatching { Dlna.position(tv) }.getOrNull() ?: continue
+                castPos = p
+                val item = current ?: continue
+                if (!item.isLive && p.durationMs > 0) {
+                    repo.storage.saveProgress(item, p.positionMs, p.durationMs)
+                }
+                if (p.state == "PLAYING") wasPlaying = true
+                // koniec odcinka/filmu na telewizorze → następny w kolejce
+                if (wasPlaying && p.state == "STOPPED" && !item.isLive) {
+                    wasPlaying = false
+                    if (index < items.lastIndex) play(index + 1, 0L)
+                }
+            }
+        }
+    }
+
+    /** Kończy wysyłanie; resumeHere = oglądaj dalej na telefonie od tego samego miejsca. */
+    private fun stopCasting(resumeHere: Boolean) {
+        val tv = castTarget ?: return
+        val pos = castPos?.positionMs ?: 0L
+        castTarget = null
+        castPollJob?.cancel()
+        castJob?.cancel()
+        lifecycleScope.launch { runCatching { Dlna.stop(tv) } }
+        if (resumeHere) play(index, if (current?.isLive == true) -1L else pos)
+        else finish()
+    }
+
+    private fun castToggle() {
+        val tv = castTarget ?: return
+        lifecycleScope.launch {
+            val playing = castPos?.state == "PLAYING"
+            runCatching { if (playing) Dlna.pause(tv) else Dlna.resume(tv) }
+                .onFailure { castError = it.message }
+            castPos = runCatching { Dlna.position(tv) }.getOrNull() ?: castPos
+        }
+    }
+
+    private fun castSeekBy(deltaMs: Long) {
+        val tv = castTarget ?: return
+        val p = castPos ?: return
+        val target = (p.positionMs + deltaMs).coerceIn(0, if (p.durationMs > 0) p.durationMs - 3000 else Long.MAX_VALUE)
+        castPos = p.copy(positionMs = target)
+        lifecycleScope.launch { runCatching { Dlna.seek(tv, target) }.onFailure { castError = it.message } }
+    }
+
     private fun saveProgress() {
         val item = current ?: return
         if (item.isLive) return
+        if (castTarget != null) return // postęp zapisuje odpytywanie telewizora
         val d = player.duration
         if (d > 0) repo.storage.saveProgress(item, player.currentPosition, d)
     }
@@ -293,13 +415,15 @@ class PlayerActivity : ComponentActivity() {
                     }
                 },
                 update = { view ->
-                    view.useController = !inPip
+                    view.useController = !inPip && castTarget == null
                     view.resizeMode = resizeMode
                 },
             )
 
             val item = current
-            if (item != null && controlsVisible && !inPip) {
+            if (item != null && castTarget != null) {
+                CastOverlay(item, castTarget!!)
+            } else if (item != null && controlsVisible && !inPip) {
                 TopBar(item)
                 if (items.size > 1) {
                     ZapButton(Icons.Filled.SkipPrevious, Modifier.align(Alignment.CenterStart), index > 0) {
@@ -311,8 +435,10 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
 
+            if (castDialog) CastDialog()
+
             val err = error
-            if (err != null && item != null && !inPip) {
+            if (err != null && item != null && !inPip && castTarget == null) {
                 Column(
                     Modifier.align(Alignment.Center).background(Color(0xCC000000)).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -379,10 +505,221 @@ class PlayerActivity : ComponentActivity() {
             }) {
                 Icon(Icons.Filled.AspectRatio, "Proporcje obrazu", tint = Color.White)
             }
+            IconButton(onClick = { castDialog = true }) {
+                Icon(Icons.Filled.Cast, "Odtwórz na telewizorze", tint = Color.White)
+            }
             IconButton(onClick = { openExternal(item) }) {
                 Icon(Icons.Filled.OpenInNew, "Zewnętrzny odtwarzacz", tint = Color.White)
             }
         }
+    }
+
+    // ---------------- Pilot telewizora ----------------
+
+    @Composable
+    private fun CastOverlay(item: PlayItem, tv: Renderer) {
+        val now = System.currentTimeMillis()
+        val nowProgram = programs.firstOrNull { it.start <= now && it.end > now }
+        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val pos = castPos
+        val playing = pos?.state == "PLAYING" || (pos == null && castBusy)
+
+        Box(Modifier.fillMaxSize().background(Color(0xFF0E1116))) {
+            Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { finish() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Wstecz", tint = Color.White)
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { castDialog = true }) { Text("Zmień telewizor") }
+            }
+            Column(
+                Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(Icons.Filled.CastConnected, null, tint = Color(0xFFE5484D), modifier = Modifier.size(56.dp))
+                Spacer(Modifier.size(8.dp))
+                Text("Odtwarzanie na telewizorze", color = Color(0xFF9BA3AF), fontSize = 14.sp)
+                Text(tv.name, color = Color.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.size(20.dp))
+                Text(
+                    (if (item.isLive) "${index + 1}. " else "") + item.title,
+                    color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 22.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+                item.subtitle?.takeIf { !item.isLive }?.let {
+                    Text(it, color = Color(0xFFCCCCCC), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (nowProgram != null) {
+                    Text(
+                        "${fmt.format(Date(nowProgram.start))} ${nowProgram.title}",
+                        color = Color(0xFFDDDDDD), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.size(16.dp))
+
+                if (!item.isLive && pos != null && pos.durationMs > 0) {
+                    LinearProgressIndicator(
+                        progress = { (pos.positionMs.toFloat() / pos.durationMs).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        color = Color(0xFFE5484D),
+                    )
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(clock(pos.positionMs), color = Color(0xFFCCCCCC), fontSize = 12.sp)
+                        Spacer(Modifier.weight(1f))
+                        Text(clock(pos.durationMs), color = Color(0xFFCCCCCC), fontSize = 12.sp)
+                    }
+                }
+
+                if (castBusy) {
+                    Spacer(Modifier.size(8.dp))
+                    CircularProgressIndicator(Modifier.size(28.dp), color = Color(0xFFE5484D))
+                    Text("Wysyłam na telewizor…", color = Color(0xFF9BA3AF), fontSize = 13.sp)
+                }
+                castError?.let {
+                    Spacer(Modifier.size(8.dp))
+                    Text(it, color = Color(0xFFFF8A8D), fontSize = 13.sp)
+                    TextButton(onClick = { play(index, -1L) }) { Text("Spróbuj ponownie") }
+                }
+
+                Spacer(Modifier.size(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RoundButton(Icons.Filled.SkipPrevious, "Poprzedni", items.size > 1 && index > 0) {
+                        play(index - 1, if (item.isLive) -1L else 0L)
+                    }
+                    if (!item.isLive) RoundButton(Icons.Filled.Replay30, "−30 s", pos != null) { castSeekBy(-30_000) }
+                    RoundButton(
+                        if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        "Pauza / odtwarzaj", !castBusy, big = true,
+                    ) { castToggle() }
+                    if (!item.isLive) RoundButton(Icons.Filled.Forward30, "+30 s", pos != null) { castSeekBy(30_000) }
+                    RoundButton(Icons.Filled.SkipNext, "Następny", items.size > 1 && index < items.lastIndex) {
+                        play(index + 1, if (item.isLive) -1L else 0L)
+                    }
+                }
+                Spacer(Modifier.size(24.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = { stopCasting(resumeHere = true) }) { Text("Oglądaj na telefonie") }
+                    Button(onClick = { stopCasting(resumeHere = false) }) { Text("Zakończ") }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun RoundButton(
+        icon: androidx.compose.ui.graphics.vector.ImageVector,
+        label: String,
+        enabled: Boolean,
+        big: Boolean = false,
+        onClick: () -> Unit,
+    ) {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier.size(if (big) 72.dp else 54.dp)
+                .background(if (big) Color(0xFFE5484D) else Color(0xFF1F242D), CircleShape),
+        ) {
+            Icon(icon, label, tint = if (enabled) Color.White else Color.Gray, modifier = Modifier.size(if (big) 40.dp else 28.dp))
+        }
+    }
+
+    private fun clock(ms: Long): String {
+        val s = ms / 1000
+        return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
+    }
+
+    // ---------------- Wybór telewizora ----------------
+
+    @Composable
+    private fun CastDialog() {
+        var found by remember { mutableStateOf<List<Renderer>>(emptyList()) }
+        var searching by remember { mutableStateOf(true) }
+        var attempt by remember { mutableIntStateOf(0) }
+        var manualIp by remember { mutableStateOf("") }
+        var manualBusy by remember { mutableStateOf(false) }
+        var manualError by remember { mutableStateOf<String?>(null) }
+        val scope = rememberCoroutineScope()
+
+        LaunchedEffect(attempt) {
+            searching = true
+            val list = mutableListOf<Renderer>()
+            // najpierw ostatnio używany telewizor — zwykle odpowiada od razu
+            repo.storage.castLocation?.let { loc ->
+                runCatching { Dlna.fromLocation(loc) }.getOrNull()?.let { list.add(it) }
+                found = list.toList()
+            }
+            val discovered = Dlna.discover(this@PlayerActivity)
+            found = (list + discovered).distinctBy { it.avTransportUrl }
+            searching = false
+        }
+
+        AlertDialog(
+            onDismissRequest = { castDialog = false },
+            title = { Text("Odtwórz na telewizorze") },
+            text = {
+                Column {
+                    if (found.isEmpty() && !searching) {
+                        Text(
+                            "Nie znaleziono telewizora. Sprawdź, czy jest włączony i podłączony do tego samego Wi‑Fi.",
+                            fontSize = 14.sp,
+                        )
+                    }
+                    found.forEach { tv ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { startCasting(tv) }.padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.Tv, null, tint = Color(0xFFE5484D))
+                            Column(Modifier.padding(start = 12.dp)) {
+                                Text(tv.name, fontWeight = FontWeight.Medium)
+                                Text(tv.host, fontSize = 12.sp, color = Color(0xFF9BA3AF))
+                            }
+                        }
+                    }
+                    if (searching) {
+                        Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text("  Szukam telewizorów w sieci…", fontSize = 14.sp)
+                        }
+                    }
+                    Spacer(Modifier.size(12.dp))
+                    Text("Albo wpisz adres IP telewizora:", fontSize = 13.sp, color = Color(0xFF9BA3AF))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = manualIp,
+                            onValueChange = { manualIp = it },
+                            placeholder = { Text("np. 192.168.0.240") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(
+                            enabled = !manualBusy && manualIp.isNotBlank(),
+                            onClick = {
+                                manualBusy = true
+                                manualError = null
+                                scope.launch {
+                                    try {
+                                        startCasting(Dlna.fromIp(manualIp))
+                                    } catch (e: Exception) {
+                                        manualError = e.message
+                                    } finally {
+                                        manualBusy = false
+                                    }
+                                }
+                            },
+                        ) { Text("Połącz") }
+                    }
+                    manualError?.let { Text(it, color = Color(0xFFFF8A8D), fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !searching, onClick = { attempt++ }) { Text("Szukaj ponownie") }
+            },
+            dismissButton = {
+                TextButton(onClick = { castDialog = false }) { Text("Anuluj") }
+            },
+        )
     }
 
     @Composable

@@ -34,6 +34,11 @@ class Storage(context: Context) {
         get() = prefs.getString("userAgent", Http.DEFAULT_USER_AGENT) ?: Http.DEFAULT_USER_AGENT
         set(v) = prefs.edit().putString("userAgent", v).apply()
 
+    /** Ostatnio używany telewizor do wysyłania obrazu (adres opisu DLNA). */
+    var castLocation: String?
+        get() = prefs.getString("castLocation", null)
+        set(v) = prefs.edit().putString("castLocation", v).apply()
+
     var radioCountry: String
         get() = prefs.getString("radioCountry", "PL") ?: "PL"
         set(v) = prefs.edit().putString("radioCountry", v).apply()
