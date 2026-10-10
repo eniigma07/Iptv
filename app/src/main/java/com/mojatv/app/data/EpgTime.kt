@@ -70,6 +70,23 @@ object EpgTime {
         return f.format(Date(ms))
     }
 
+    private fun cal(ms: Long): java.util.Calendar =
+        java.util.Calendar.getInstance(if (showPolishTime) WARSAW_TZ else TimeZone.getDefault()).apply { timeInMillis = ms }
+
+    /** Klucz dnia (rok*1000+dzień roku) w wyświetlanej strefie. */
+    fun dayKey(ms: Long): Int = cal(ms).let { it.get(java.util.Calendar.YEAR) * 1000 + it.get(java.util.Calendar.DAY_OF_YEAR) }
+
+    /** „Dziś”, „Jutro” albo np. „wt., 13 paź”. */
+    fun dayLabel(ms: Long): String {
+        val now = System.currentTimeMillis()
+        val k = dayKey(ms)
+        if (k == dayKey(now)) return "Dziś"
+        if (k == dayKey(now + 24 * 3600_000L)) return "Jutro"
+        val f = SimpleDateFormat("EEEE, d MMMM", Locale("pl"))
+        if (showPolishTime) f.timeZone = WARSAW_TZ
+        return f.format(Date(ms)).replaceFirstChar { it.uppercase() }
+    }
+
     fun zoneLabel(): String = if (showPolishTime) "czas polski" else "czas telefonu"
 
     /** Odczytuje „yyyy-MM-dd HH:mm:ss” jako cyfry zegara (bez strefy). */

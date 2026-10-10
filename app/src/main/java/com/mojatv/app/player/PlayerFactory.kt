@@ -60,6 +60,8 @@ object PlayerFactory {
 
     fun isHls(url: String): Boolean = url.substringBefore('?').lowercase().endsWith(".m3u8")
 
+    fun isLocal(url: String): Boolean = url.startsWith("file:") || url.startsWith("content:")
+
     fun mediaItem(item: PlayItem, forceHls: Boolean = false): MediaItem {
         val uri = Uri.parse(item.url)
         val metadata = MediaMetadata.Builder()

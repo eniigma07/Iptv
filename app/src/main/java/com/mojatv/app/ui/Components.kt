@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
@@ -252,6 +253,7 @@ fun ChannelRow(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    onGuide: (() -> Unit)? = null,
 ) {
     Row(
         Modifier
@@ -299,6 +301,11 @@ fun ChannelRow(
                     "${formatTime(next.start)}  ${next.title}",
                     fontSize = 11.sp, color = TextSecondary.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+            }
+        }
+        if (onGuide != null) {
+            IconButton(onClick = onGuide) {
+                Icon(Icons.Filled.CalendarMonth, contentDescription = "Program i nagrywanie", tint = TextSecondary)
             }
         }
         IconButton(onClick = onToggleFavorite) {

@@ -84,7 +84,7 @@ object StreamProxy {
                     return
                 }
                 when {
-                    target.url.startsWith("file:") -> fileResponse(out, target, headers["range"], method == "HEAD")
+                    target.url.startsWith("file:") || target.url.startsWith("content:") -> fileResponse(out, target, headers["range"], method == "HEAD")
                     method == "HEAD" -> headResponse(out, target)
                     else -> getResponse(out, target, headers["range"])
                 }
@@ -146,37 +146,48 @@ object StreamProxy {
         }
     }
 
-    /** Nagranie z telefonu — z obsługą przewijania (Range). */
+    /** Nagranie z telefonu (plik albo content://) — z obsługą przewijania (Range). */
     private fun fileResponse(out: OutputStream, t: Target, range: String?, headOnly: Boolean) {
-        val file = java.io.File(java.net.URI(t.url))
-        if (!file.exists()) {
+        val stream: java.io.FileInputStream? = try {
+            if (t.url.startsWith("content:")) {
+                com.mojatv.app.MojaTvApp.instance.contentResolver
+                    .openFileDescriptor(android.net.Uri.parse(t.url), "r")
+                    ?.let { android.os.ParcelFileDescriptor.AutoCloseInputStream(it) }
+            } else {
+                java.io.File(java.net.URI(t.url)).takeIf { it.exists() }?.let { java.io.FileInputStream(it) }
+            }
+        } catch (e: Exception) {
+            null
+        }
+        if (stream == null) {
             writeHead(out, "404 Not Found", listOf("Content-Length" to "0"))
             return
         }
-        val total = file.length()
-        var start = 0L
-        var end = total - 1
-        val m = range?.let { Regex("bytes=(\\d*)-(\\d*)").find(it) }
-        if (m != null) {
-            val a = m.groupValues[1]
-            val b = m.groupValues[2]
-            if (a.isNotEmpty()) start = a.toLong()
-            if (b.isNotEmpty()) end = minOf(b.toLong(), total - 1)
-            if (a.isEmpty() && b.isNotEmpty()) { start = maxOf(0, total - b.toLong()); end = total - 1 }
-        }
-        val partial = m != null
-        val h = dlnaHeaders(t).toMutableList()
-        h += "Accept-Ranges" to "bytes"
-        h += "Content-Length" to (end - start + 1).toString()
-        if (partial) h += "Content-Range" to "bytes $start-$end/$total"
-        writeHead(out, if (partial) "206 Partial Content" else "200 OK", h)
-        if (headOnly) return
-        java.io.RandomAccessFile(file, "r").use { raf ->
-            raf.seek(start)
+        stream.use { input ->
+            val channel = input.channel
+            val total = channel.size()
+            var start = 0L
+            var end = total - 1
+            val m = range?.let { Regex("bytes=(\\d*)-(\\d*)").find(it) }
+            if (m != null) {
+                val a = m.groupValues[1]
+                val b = m.groupValues[2]
+                if (a.isNotEmpty()) start = a.toLong()
+                if (b.isNotEmpty()) end = minOf(b.toLong(), total - 1)
+                if (a.isEmpty() && b.isNotEmpty()) { start = maxOf(0, total - b.toLong()); end = total - 1 }
+            }
+            val partial = m != null
+            val h = dlnaHeaders(t).toMutableList()
+            h += "Accept-Ranges" to "bytes"
+            h += "Content-Length" to (end - start + 1).toString()
+            if (partial) h += "Content-Range" to "bytes $start-$end/$total"
+            writeHead(out, if (partial) "206 Partial Content" else "200 OK", h)
+            if (headOnly) return
+            channel.position(start)
             val buf = ByteArray(64 * 1024)
             var left = end - start + 1
             while (left > 0) {
-                val n = raf.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
                 if (n < 0) break
                 out.write(buf, 0, n)
                 left -= n

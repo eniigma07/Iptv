@@ -85,6 +85,7 @@ object RecordingScheduler {
     fun delete(context: Context, rec: Recording) {
         if (rec.active) cancel(context, rec)
         rec.filePath?.let { runCatching { File(it).delete() } }
+        rec.contentUri?.let { runCatching { context.contentResolver.delete(android.net.Uri.parse(it), null, null) } }
         store().remove(rec.id)
     }
 

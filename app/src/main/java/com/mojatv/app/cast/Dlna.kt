@@ -193,7 +193,8 @@ object Dlna {
         val live = item.isLive
         val isHls = item.url.substringBefore('?').lowercase().endsWith(".m3u8")
         val mime = mimeOf(item, item.url)
-        val proxied = if (viaPhone && !isHls) StreamProxy.urlFor(item.url, mime, live) else null
+        val local = item.url.startsWith("file:") || item.url.startsWith("content:")
+        val proxied = if ((viaPhone && !isHls) || local) StreamProxy.urlFor(item.url, mime, live) else null
         val url = proxied ?: resolveRedirects(item.url)
         val protocolInfo = "http-get:*:$mime:" + if (isHls) "*" else StreamProxy.contentFeatures(live)
 

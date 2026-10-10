@@ -157,7 +157,7 @@ class PlayerActivity : ComponentActivity() {
         triedHls = false
         liveRetries = 0
         retryJob?.cancel()
-        repo.storage.addRecent(item)
+        if (!item.key.startsWith("rec:")) repo.storage.addRecent(item)
 
         val start = when {
             item.isLive -> 0L
@@ -195,7 +195,7 @@ class PlayerActivity : ComponentActivity() {
 
             when {
                 // Strumień bez rozszerzenia .m3u8, który okazuje się być HLS
-                parsingError && !triedHls && !PlayerFactory.isHls(item.url) -> {
+                parsingError && !triedHls && !PlayerFactory.isHls(item.url) && !PlayerFactory.isLocal(item.url) -> {
                     triedHls = true
                     player.setMediaItem(PlayerFactory.mediaItem(item, forceHls = true))
                     player.prepare()
@@ -440,7 +440,25 @@ class PlayerActivity : ComponentActivity() {
 
             if (castDialog) CastDialog()
             if (recordDialog && item != null) {
-                com.mojatv.app.ui.RecordDialog(item) { recordDialog = false }
+                com.mojatv.app.ui.ChannelGuide(item, onDismiss = { recordDialog = false }, onStartedNow = {
+                    // nagrywanie od razu tego, co się ogląda = drugie połączenie z serwerem
+                    val max = repo.account.value?.maxConnections?.trim()?.toIntOrNull()
+                    if (max == 1 && castTarget == null) {
+                        android.widget.Toast.makeText(
+                            this@PlayerActivity,
+                            "Nagrywanie trwa w tle. Twoje konto pozwala na 1 połączenie, więc zamykam odtwarzacz.",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                        player.stop()
+                        finish()
+                    } else if (max == null) {
+                        android.widget.Toast.makeText(
+                            this@PlayerActivity,
+                            "Nagrywanie trwa w tle. Jeśli obraz albo nagranie się przerwie, zamknij odtwarzacz — konto może mieć limit połączeń.",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                })
             }
 
             val err = error
@@ -513,7 +531,7 @@ class PlayerActivity : ComponentActivity() {
             }
             if (item.kind == com.mojatv.app.data.ContentKind.LIVE) {
                 IconButton(onClick = { recordDialog = true }) {
-                    Icon(Icons.Filled.FiberManualRecord, "Nagraj", tint = Color(0xFFE5484D))
+                    Icon(Icons.Filled.FiberManualRecord, "Program i nagrywanie", tint = Color(0xFFE5484D))
                 }
             }
             IconButton(onClick = { castDialog = true }) {

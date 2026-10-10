@@ -26,7 +26,13 @@ data class Recording(
     val filePath: String? = null,
     val bytes: Long = 0,
     val error: String? = null,
+    /** Po zakończeniu: plik w folderze Filmy/MojaTV (content://…), widoczny w Galerii i Moich plikach. */
+    val contentUri: String? = null,
 ) {
+    /** Adres do odtwarzania: Filmy/MojaTV albo plik w folderze aplikacji. */
+    val playUri: String?
+        get() = contentUri ?: filePath?.let { android.net.Uri.fromFile(File(it)).toString() }
+
     val active: Boolean get() = status == RecStatus.SCHEDULED || status == RecStatus.RECORDING
 
     fun toJson(): JSONObject = JSONObject()
@@ -39,6 +45,7 @@ data class Recording(
         .put("filePath", filePath ?: JSONObject.NULL)
         .put("bytes", bytes)
         .put("error", error ?: JSONObject.NULL)
+        .put("contentUri", contentUri ?: JSONObject.NULL)
 
     companion object {
         fun fromJson(o: JSONObject): Recording? = try {
@@ -52,6 +59,7 @@ data class Recording(
                 filePath = o.optString("filePath").takeIf { it.isNotBlank() && it != "null" },
                 bytes = o.optLong("bytes"),
                 error = o.optString("error").takeIf { it.isNotBlank() && it != "null" },
+                contentUri = o.optString("contentUri").takeIf { it.isNotBlank() && it != "null" },
             )
         } catch (e: Exception) {
             null

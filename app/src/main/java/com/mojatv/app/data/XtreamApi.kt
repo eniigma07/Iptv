@@ -199,6 +199,25 @@ class XtreamApi(private val cfg: SourceConfig) {
         }
     }
 
+    /** Pełny program kanału (kilka dni) — get_simple_data_table. */
+    suspend fun fullEpg(streamId: String): List<EpgProgram> {
+        val root = JSONObject(Http.getString(api("get_simple_data_table", "&stream_id=$streamId")))
+        val arr = root.optJSONArray("epg_listings") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val start = o.str("start_timestamp")?.toLongOrNull() ?: return@mapNotNull null
+            val end = (o.str("stop_timestamp") ?: o.str("end_timestamp"))?.toLongOrNull() ?: return@mapNotNull null
+            EpgProgram(
+                title = decodeB64(o.str("title")) ?: "",
+                description = decodeB64(o.str("description")),
+                start = start * 1000,
+                end = end * 1000,
+                wallStart = EpgTime.parseWall(o.str("start")),
+                wallEnd = EpgTime.parseWall(o.str("end") ?: o.str("stop")),
+            )
+        }.distinctBy { it.start }.sortedBy { it.start }
+    }
+
     private fun decodeB64(s: String?): String? {
         if (s == null) return null
         return try {

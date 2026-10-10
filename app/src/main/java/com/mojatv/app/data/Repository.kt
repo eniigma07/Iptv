@@ -443,7 +443,7 @@ class Repository(context: Context) {
         try {
             val now = System.currentTimeMillis()
             val map = Http.withStream(url) {
-                XmltvParser.parse(it, wanted, now - 3 * 3600_000L, now + 24 * 3600_000L)
+                XmltvParser.parse(it, wanted, now - 3 * 3600_000L, now + 32 * 3600_000L)
             }
             _epg.value = map
             _epgStatus.value = null
@@ -490,10 +490,25 @@ class Repository(context: Context) {
         return EpgTime.adjustAll(rawPrograms(item, 8)).filter { it.end > now }
     }
 
-    /** Dłuższa lista audycji (do planowania nagrań). */
+    private val fullEpgCache = HashMap<String, Pair<Long, List<EpgProgram>>>()
+
+    /** Program na najbliższe ok. 30 godzin (do przeglądania i planowania nagrań). */
     suspend fun upcomingPrograms(item: PlayItem): List<EpgProgram> {
         val now = System.currentTimeMillis()
-        return EpgTime.adjustAll(rawPrograms(item, 60)).filter { it.end > now }.sortedBy { it.start }
+        val horizon = now + 30 * 3600_000L
+        var raw: List<EpgProgram> = emptyList()
+        val api = xtream()
+        if (api != null && item.key.startsWith("live:")) {
+            val id = item.key.removePrefix("live:")
+            val cached = synchronized(fullEpgCache) { fullEpgCache[id] }
+            raw = if (cached != null && now - cached.first < 15 * 60_000L) cached.second else {
+                val list = runCatching { api.fullEpg(id) }.getOrDefault(emptyList())
+                synchronized(fullEpgCache) { fullEpgCache[id] = now to list }
+                list
+            }
+        }
+        if (raw.none { it.end > now }) raw = rawPrograms(item, 60)
+        return EpgTime.adjustAll(raw).filter { it.end > now && it.start < horizon }.sortedBy { it.start }
     }
 
     /** Zapisuje ustawienia korekty godzin i od razu je stosuje. */

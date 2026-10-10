@@ -78,6 +78,7 @@ fun LiveScreen(c: Catalog) {
                     onClick = { context.playVideo(items, i) },
                     onToggleFavorite = { repo.storage.toggleFavorite(item) },
                     onLongClick = { recordFor = item },
+                    onGuide = { recordFor = item },
                 )
                 HorizontalDivider(color = SurfaceHigh, thickness = 0.5.dp)
             }

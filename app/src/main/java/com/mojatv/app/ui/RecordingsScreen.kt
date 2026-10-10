@@ -4,6 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -93,20 +100,47 @@ fun RecordingsScreen(nav: NavController) {
     val scheduled = recs.filter { it.status == RecStatus.SCHEDULED }.sortedBy { it.start }
     val finished = recs.filter { !it.active }.sortedByDescending { it.start }
 
+    fun missing() = Toast.makeText(context, "Nie znaleziono pliku nagrania (mógł zostać usunięty).", Toast.LENGTH_LONG).show()
+
     fun play(r: Recording) {
-        val path = r.filePath ?: return
-        val f = File(path)
-        if (!f.exists()) return
+        val uri = r.playUri ?: return missing()
+        if (r.contentUri == null && r.filePath?.let { File(it).exists() } != true) return missing()
         context.playVideo(
             PlayItem(
                 key = "rec:${r.id}",
                 kind = ContentKind.MOVIE,
                 title = r.title,
-                url = Uri.fromFile(f).toString(),
+                url = uri,
                 image = r.channel.image,
                 subtitle = r.channel.title + " · " + EpgTime.dayHm(r.start),
             )
         )
+    }
+
+    /** Uri, które można przekazać innej aplikacji (content://). */
+    fun shareUri(r: Recording): Uri? {
+        r.contentUri?.let { return Uri.parse(it) }
+        val f = r.filePath?.let { File(it) }?.takeIf { it.exists() } ?: return null
+        return runCatching { FileProvider.getUriForFile(context, context.packageName + ".files", f) }.getOrNull()
+    }
+
+    fun openExternal(r: Recording) {
+        val uri = shareUri(r) ?: return missing()
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "video/*")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(Intent.createChooser(intent, "Otwórz w…").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { Toast.makeText(context, "Brak innego odtwarzacza. Zainstaluj np. VLC.", Toast.LENGTH_LONG).show() }
+    }
+
+    fun share(r: Recording) {
+        val uri = shareUri(r) ?: return missing()
+        val intent = Intent(Intent.ACTION_SEND)
+            .setType("video/mp2t")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(Intent.EXTRA_TITLE, r.title)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        runCatching { context.startActivity(Intent.createChooser(intent, "Udostępnij nagranie").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
     Scaffold(
@@ -192,7 +226,36 @@ fun RecordingsScreen(nav: NavController) {
                 item { SectionTitle("Gotowe") }
                 items(finished, key = { it.id }) { r ->
                     RecRow(r, onClick = if (r.status == RecStatus.DONE) ({ play(r) }) else null) {
-                        IconButton(onClick = { toDelete = r }) { Icon(Icons.Filled.Delete, "Usuń", tint = TextSecondary) }
+                        if (r.status == RecStatus.DONE) {
+                            var menu by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Więcej", tint = TextSecondary) }
+                                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Odtwórz") },
+                                        leadingIcon = { Icon(Icons.Filled.PlayArrow, null) },
+                                        onClick = { menu = false; play(r) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Otwórz w innym odtwarzaczu") },
+                                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null) },
+                                        onClick = { menu = false; openExternal(r) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Udostępnij") },
+                                        leadingIcon = { Icon(Icons.Filled.Share, null) },
+                                        onClick = { menu = false; share(r) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Usuń") },
+                                        leadingIcon = { Icon(Icons.Filled.Delete, null) },
+                                        onClick = { menu = false; toDelete = r },
+                                    )
+                                }
+                            }
+                        } else {
+                            IconButton(onClick = { toDelete = r }) { Icon(Icons.Filled.Delete, "Usuń", tint = TextSecondary) }
+                        }
                     }
                 }
             }
@@ -205,6 +268,14 @@ fun RecordingsScreen(nav: NavController) {
                 Stepper("Skończ później", padAfter) {
                     padAfter = it.coerceIn(0, 60); storage.recPadAfter = padAfter
                 }
+                Text(
+                    if (android.os.Build.VERSION.SDK_INT >= 29)
+                        "Gdzie są nagrania: w pamięci telefonu, folder Filmy → MojaTV (widać je w Galerii i w aplikacji Moje pliki). " +
+                            "Podczas nagrywania plik jest najpierw w folderze aplikacji, a po zakończeniu trafia do Filmy/MojaTV."
+                    else
+                        "Gdzie są nagrania: Android/data/${context.packageName}/files/Movies/Nagrania",
+                    color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
                 val free = MojaTvApp.instance.recordings.freeSpace() / (1024 * 1024 * 1024.0)
                 Text(
                     "Wolne miejsce: %.1f GB. Godzina nagrania HD zajmuje zwykle 1–3 GB.".format(free),

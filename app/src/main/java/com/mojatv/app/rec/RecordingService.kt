@@ -121,19 +121,87 @@ class RecordingService : Service() {
         } catch (e: CancellationException) {
             cancelled = true
         } finally {
-            val ok = written > 0
+            // sprawdzamy, czy w pliku jest obraz (a nie np. komunikat błędu serwera)
+            val problem = if (written > 0) validate(file) else null
+            val ok = written > 0 && problem == null
+            val moved = if (ok) moveToMovies(file) else null
+            if (!ok && problem != null) runCatching { file.delete() }
+            val err = when {
+                ok -> null
+                problem != null -> problem
+                cancelled -> null
+                else -> lastError ?: "Nie udało się pobrać strumienia"
+            }
             store.update(rec.id) {
                 it.copy(
                     status = when {
                         ok -> RecStatus.DONE
-                        cancelled -> RecStatus.CANCELLED
+                        cancelled && problem == null -> RecStatus.CANCELLED
                         else -> RecStatus.FAILED
                     },
-                    bytes = written,
-                    error = if (ok) null else (lastError ?: if (cancelled) null else "Nie udało się pobrać strumienia"),
+                    bytes = if (ok) written else 0,
+                    error = err,
+                    contentUri = moved,
+                    filePath = if (moved != null) null else it.filePath,
                 )
             }
-            notifyFinished(rec, ok, lastError)
+            notifyFinished(rec, ok, err)
+        }
+    }
+
+    /**
+     * Sprawdza, czy plik to strumień MPEG‑TS (bajt synchronizacji 0x47 co 188 bajtów).
+     * Zwraca opis problemu albo null, gdy wszystko w porządku.
+     */
+    private fun validate(file: File): String? {
+        if (!file.exists() || file.length() < 64 * 1024) {
+            return "Serwer nie wysłał obrazu (za mało danych). Najczęściej to limit połączeń konta — " +
+                "nie oglądaj tego samego kanału w trakcie nagrywania."
+        }
+        val head = ByteArray(188 * 12)
+        val n = file.inputStream().use { it.read(head) }
+        for (offset in 0 until 188) {
+            var hits = 0
+            var i = offset
+            while (i < n) {
+                if (head[i] == 0x47.toByte()) hits++ else break
+                i += 188
+            }
+            if (hits >= 5) return null
+        }
+        val text = String(head, 0, minOf(n, 200), Charsets.UTF_8)
+        return if (text.contains("<html", true) || text.contains("error", true) || text.contains("{"))
+            "Serwer zamiast obrazu wysłał komunikat błędu (np. limit połączeń albo kanał niedostępny)."
+        else "Nagranie ma nieznany format i nie da się go odtworzyć."
+    }
+
+    /** Przenosi gotowe nagranie do Filmy/MojaTV (widoczne w Galerii i Moich plikach). Zwraca content:// albo null. */
+    private fun moveToMovies(file: File): String? {
+        if (Build.VERSION.SDK_INT < 29) return null
+        return try {
+            val resolver = contentResolver
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, file.name)
+                put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp2ts")
+                put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/MojaTV")
+                put(android.provider.MediaStore.Video.Media.IS_PENDING, 1)
+            }
+            val collection = android.provider.MediaStore.Video.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = resolver.insert(collection, values) ?: return null
+            try {
+                resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out, 256 * 1024) } }
+                    ?: throw IOException("Brak dostępu do folderu Filmy")
+                values.clear()
+                values.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } catch (e: Exception) {
+                resolver.delete(uri, null, null)
+                throw e
+            }
+            file.delete()
+            uri.toString()
+        } catch (e: Exception) {
+            null // zostaje w folderze aplikacji
         }
     }
 
