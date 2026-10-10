@@ -1,0 +1,13 @@
+{
+  "name": "mojatv-samsung",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-env": "^7.26.0",
+    "esbuild": "0.24.2"
+  }
+}

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080, user-scalable=no">
+    <title>MojaTV</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Biblioteka Samsunga z odtwarzaczem AVPlay (dostępna tylko na telewizorze) -->
+    <script src="$WEBAPIS/webapis/webapis.js"></script>
+</head>
+<body>
+    <!-- Warstwa wideo odtwarzacza AVPlay — musi być pod interfejsem -->
+    <object id="av-player" type="application/avplayer"></object>
+    <!-- Zastępczy odtwarzacz do testów poza telewizorem -->
+    <video id="html-player" playsinline></video>
+
+    <div id="app"></div>
+
+    <script src="js/defaults.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

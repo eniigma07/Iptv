@@ -1,4 +1,4 @@
-name: Zbuduj APK
+name: Zbuduj aplikacje
 
 on:
   push:
@@ -8,8 +8,12 @@ on:
 permissions:
   contents: write
 
+env:
+  TIZEN_STUDIO_VER: 4.5.1
+
 jobs:
-  build:
+  android:
+    name: Android (APK)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,13 +38,112 @@ jobs:
           name: MojaTV-apk
           path: MojaTV.apk
 
-      # Najnowsza wersja zawsze pod tym samym linkiem:
+  samsung:
+    name: Samsung TV (WGT)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Budowanie aplikacji TV
+        working-directory: tv-samsung
+        run: |
+          npm ci --no-audit
+          npm run build
+
+      - name: Paczka projektu (dla Tizen Studio)
+        run: |
+          mkdir -p out/MojaTV-Samsung
+          cp -r tv-samsung/app out/MojaTV-Samsung/app
+          cp tv-samsung/zainstaluj.bat tv-samsung/README.md out/MojaTV-Samsung/
+          cd out && zip -qr ../MojaTV-Samsung-projekt.zip MojaTV-Samsung
+
+      - name: Instalacja Tizen CLI
+        run: |
+          sudo apt-get install -y expect > /dev/null
+          curl -fsSL -o tizen-installer "https://download.tizen.org/sdk/Installer/tizen-studio_${TIZEN_STUDIO_VER}/web-cli_Tizen_Studio_${TIZEN_STUDIO_VER}_ubuntu-64.bin"
+          chmod +x tizen-installer
+          ./tizen-installer --accept-license "${GITHUB_WORKSPACE}/tizen-studio"
+          rm tizen-installer
+
+      - name: Certyfikat autora
+        run: |
+          T="${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin/tizen"
+          "$T" certificate -a MojaTV -p 1234 -c PL -s Mazowieckie -ct Warszawa -o MojaTV -n MojaTV -e mojatv@example.org -f mojatvcert
+          P12=$(find "${GITHUB_WORKSPACE}" "$HOME" -name 'mojatvcert.p12' 2>/dev/null | head -1)
+          echo "Certyfikat: $P12"
+          "$T" security-profiles add -n MojaTV -a "$P12" -p 1234
+          PROFILES=$(find "${GITHUB_WORKSPACE}" "$HOME" -path '*profile/profiles.xml' 2>/dev/null | head -1)
+          echo "Profile: $PROFILES"
+          "$T" cli-config "profiles.path=$PROFILES"
+          chmod 755 "$PROFILES"
+          # hasła wprost w profilu, żeby pakowanie nie pytało
+          sed -i "s|[^\"]*mojatvcert.pwd|1234|g" "$PROFILES"
+          sed -i "s|[^\"]*tizen-distributor-signer.pwd|tizenpkcs12passfordsigner|g" "$PROFILES"
+          sed -i 's|password=""|password="tizenpkcs12passfordsigner"|g' "$PROFILES"
+          cat "$PROFILES"
+
+      - name: Pakowanie WGT
+        working-directory: tv-samsung/app
+        run: |
+          T="${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin/tizen"
+          "$T" build-web -e ".*"
+          cat > pack.exp <<EOF
+          set timeout 300
+          spawn $T package -t wgt -o ./release -s MojaTV -- .buildResult
+          expect {
+            "Author password:" { send "1234\r"; exp_continue }
+            "Yes: (Y), No: (N) ?" { send "N\r"; exp_continue }
+            eof
+          }
+          EOF
+          expect pack.exp
+          ls -la release
+          cp release/*.wgt "${GITHUB_WORKSPACE}/MojaTV-Samsung.wgt"
+
+      - name: Pokaż błąd Tizen CLI
+        if: failure()
+        run: |
+          LOG=$(find "${GITHUB_WORKSPACE}" "$HOME" -name 'cli.log' 2>/dev/null | head -1)
+          if [ -n "$LOG" ]; then echo "::error title=Tizen CLI::$(tail -c 2500 "$LOG" | tr '\n' ' ')"; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: MojaTV-Samsung
+          path: |
+            MojaTV-Samsung.wgt
+            MojaTV-Samsung-projekt.zip
+          if-no-files-found: ignore
+
+  release:
+    name: Wydanie do pobrania
+    runs-on: ubuntu-latest
+    needs: [android, samsung]
+    if: always() && needs.android.result == 'success'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - run: ls -la
+
+      # Najnowsze wersje zawsze pod tymi samymi linkami:
       # https://github.com/<konto>/<repo>/releases/latest/download/MojaTV.apk
-      - name: Wydanie do pobrania na telefon
+      # https://github.com/<konto>/<repo>/releases/latest/download/MojaTV-Samsung.wgt
+      - name: Wydanie
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: MojaTV ${{ github.run_number }}
-          body: "Pobierz MojaTV.apk na telefon i zainstaluj."
-          files: MojaTV.apk
+          body: |
+            **Telefon (Android):** pobierz MojaTV.apk na telefon i zainstaluj.
+            **Telewizor Samsung:** MojaTV-Samsung.wgt — instalacja przez Apps2Samsung (instrukcja w tv-samsung/README.md).
+          files: |
+            MojaTV.apk
+            MojaTV-Samsung.wgt
+            MojaTV-Samsung-projekt.zip
           make_latest: true
