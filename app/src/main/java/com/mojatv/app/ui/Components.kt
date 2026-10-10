@@ -2,6 +2,8 @@ package com.mojatv.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -236,11 +238,10 @@ fun WideCard(
     }
 }
 
-private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-
-fun formatTime(ms: Long): String = timeFormat.format(Date(ms))
+fun formatTime(ms: Long): String = com.mojatv.app.data.EpgTime.hm(ms)
 
 /** Wiersz kanału z logo, aktualnym programem i gwiazdką ulubionych. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChannelRow(
     item: PlayItem,
@@ -250,11 +251,12 @@ fun ChannelRow(
     isFavorite: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

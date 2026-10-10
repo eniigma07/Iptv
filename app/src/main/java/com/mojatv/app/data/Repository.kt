@@ -79,6 +79,7 @@ class Repository(context: Context) {
 
     init {
         Http.userAgent = storage.userAgent
+        EpgTime.configure(storage)
     }
 
     val catalog: Catalog? get() = (_state.value as? LoadState.Ready)?.catalog
@@ -453,22 +454,55 @@ class Repository(context: Context) {
 
     fun nowAndNext(epgId: String?, now: Long = System.currentTimeMillis()): Pair<EpgProgram?, EpgProgram?> {
         if (epgId == null) return null to null
-        val list = _epg.value[epgId.lowercase()] ?: return null to null
+        val raw = _epg.value[epgId.lowercase()] ?: return null to null
+        val list = EpgTime.adjustAll(raw)
         val idx = list.indexOfFirst { it.start <= now && it.end > now }
         if (idx < 0) return null to list.firstOrNull { it.start > now }
         return list[idx] to list.getOrNull(idx + 1)
     }
 
-    /** Program dla kanału: z XMLTV, a dla Xtream w razie braku — z krótkiego EPG serwera. */
-    suspend fun programsFor(item: PlayItem): List<EpgProgram> {
-        val now = System.currentTimeMillis()
+    private val shortEpgCache = HashMap<String, Pair<Long, List<EpgProgram>>>()
+
+    /** Surowy program z serwera (bez korekty godzin). limit = ile pozycji pobrać z Xtream. */
+    private suspend fun rawPrograms(item: PlayItem, limit: Int): List<EpgProgram> {
         item.epgId?.lowercase()?.let { id ->
-            _epg.value[id]?.filter { it.end > now }?.takeIf { it.isNotEmpty() }?.let { return it }
+            _epg.value[id]?.takeIf { it.isNotEmpty() }?.let { return it }
         }
         val api = xtream() ?: return emptyList()
-        if (!item.key.startsWith("live:")) return emptyList()
-        return runCatching { api.shortEpg(item.key.removePrefix("live:")) }.getOrDefault(emptyList())
-            .filter { it.end > now }
+        val streamId = when {
+            item.key.startsWith("live:") -> item.key.removePrefix("live:")
+            else -> return emptyList()
+        }
+        val cacheKey = "$streamId/$limit"
+        synchronized(shortEpgCache) {
+            shortEpgCache[cacheKey]?.let { (at, list) ->
+                if (System.currentTimeMillis() - at < 5 * 60_000L) return list
+            }
+        }
+        val list = runCatching { api.shortEpg(streamId, limit) }.getOrDefault(emptyList())
+        synchronized(shortEpgCache) { shortEpgCache[cacheKey] = System.currentTimeMillis() to list }
+        return list
+    }
+
+    /** Program dla kanału z poprawionymi godzinami (od bieżącej audycji). */
+    suspend fun programsFor(item: PlayItem): List<EpgProgram> {
+        val now = System.currentTimeMillis()
+        return EpgTime.adjustAll(rawPrograms(item, 8)).filter { it.end > now }
+    }
+
+    /** Dłuższa lista audycji (do planowania nagrań). */
+    suspend fun upcomingPrograms(item: PlayItem): List<EpgProgram> {
+        val now = System.currentTimeMillis()
+        return EpgTime.adjustAll(rawPrograms(item, 60)).filter { it.end > now }.sortedBy { it.start }
+    }
+
+    /** Zapisuje ustawienia korekty godzin i od razu je stosuje. */
+    fun setEpgCorrection(mode: String? = null, shiftMinutes: Int? = null, showPolish: Boolean? = null) {
+        mode?.let { storage.epgMode = it }
+        shiftMinutes?.let { storage.epgShiftMinutes = it }
+        showPolish?.let { storage.epgShowPolish = it }
+        EpgTime.configure(storage)
+        _epg.value = _epg.value.toMap() // odświeżenie ekranów korzystających z programu
     }
 
     // ---------------- Show ----------------

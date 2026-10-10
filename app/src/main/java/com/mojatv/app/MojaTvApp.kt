@@ -11,10 +11,14 @@ class MojaTvApp : Application(), ImageLoaderFactory {
     lateinit var repository: Repository
         private set
 
+    lateinit var recordings: com.mojatv.app.rec.RecordingStore
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
         repository = Repository(this)
+        recordings = com.mojatv.app.rec.RecordingStore(this)
     }
 
     override fun newImageLoader(): ImageLoader =

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
@@ -83,6 +84,9 @@ fun MainTabs(nav: NavController) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { nav.navigate(Routes.RECORDINGS) }) {
+                        Icon(Icons.Filled.FiberManualRecord, "Nagrania", tint = androidx.compose.ui.graphics.Color(0xFFE5484D))
+                    }
                     IconButton(onClick = { nav.navigate(Routes.SEARCH) }) { Icon(Icons.Filled.Search, "Szukaj") }
                     IconButton(onClick = { nav.navigate(Routes.SETTINGS) }) { Icon(Icons.Filled.Settings, "Ustawienia") }
                 },

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
@@ -111,6 +112,7 @@ class PlayerActivity : ComponentActivity() {
     // ---- wysyłanie na telewizor (DLNA) ----
     private var castTarget by mutableStateOf<Renderer?>(null)
     private var castDialog by mutableStateOf(false)
+    private var recordDialog by mutableStateOf(false)
     private var castBusy by mutableStateOf(false)
     private var castError by mutableStateOf<String?>(null)
     private var castPos by mutableStateOf<CastPosition?>(null)
@@ -437,6 +439,9 @@ class PlayerActivity : ComponentActivity() {
             }
 
             if (castDialog) CastDialog()
+            if (recordDialog && item != null) {
+                com.mojatv.app.ui.RecordDialog(item) { recordDialog = false }
+            }
 
             val err = error
             if (err != null && item != null && !inPip && castTarget == null) {
@@ -460,7 +465,7 @@ class PlayerActivity : ComponentActivity() {
         val now = System.currentTimeMillis()
         val nowProgram = programs.firstOrNull { it.start <= now && it.end > now }
         val nextProgram = programs.firstOrNull { it.start > now }
-        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val fmt = com.mojatv.app.data.EpgTime
 
         Row(
             Modifier
@@ -482,7 +487,7 @@ class PlayerActivity : ComponentActivity() {
                 }
                 if (nowProgram != null) {
                     Text(
-                        "${fmt.format(Date(nowProgram.start))} ${nowProgram.title}",
+                        "${fmt.hm(nowProgram.start)} ${nowProgram.title}",
                         color = Color(0xFFDDDDDD), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                     LinearProgressIndicator(
@@ -492,7 +497,7 @@ class PlayerActivity : ComponentActivity() {
                 }
                 if (nextProgram != null) {
                     Text(
-                        "Następnie ${fmt.format(Date(nextProgram.start))} ${nextProgram.title}",
+                        "Następnie ${fmt.hm(nextProgram.start)} ${nextProgram.title}",
                         color = Color(0xFFAAAAAA), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -505,6 +510,11 @@ class PlayerActivity : ComponentActivity() {
                 }
             }) {
                 Icon(Icons.Filled.AspectRatio, "Proporcje obrazu", tint = Color.White)
+            }
+            if (item.kind == com.mojatv.app.data.ContentKind.LIVE) {
+                IconButton(onClick = { recordDialog = true }) {
+                    Icon(Icons.Filled.FiberManualRecord, "Nagraj", tint = Color(0xFFE5484D))
+                }
             }
             IconButton(onClick = { castDialog = true }) {
                 Icon(Icons.Filled.Cast, "Odtwórz na telewizorze", tint = Color.White)
@@ -521,7 +531,7 @@ class PlayerActivity : ComponentActivity() {
     private fun CastOverlay(item: PlayItem, tv: Renderer) {
         val now = System.currentTimeMillis()
         val nowProgram = programs.firstOrNull { it.start <= now && it.end > now }
-        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val fmt = com.mojatv.app.data.EpgTime
         val pos = castPos
         val playing = pos?.state == "PLAYING" || (pos == null && castBusy)
 
@@ -552,7 +562,7 @@ class PlayerActivity : ComponentActivity() {
                 }
                 if (nowProgram != null) {
                     Text(
-                        "${fmt.format(Date(nowProgram.start))} ${nowProgram.title}",
+                        "${fmt.hm(nowProgram.start)} ${nowProgram.title}",
                         color = Color(0xFFDDDDDD), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }

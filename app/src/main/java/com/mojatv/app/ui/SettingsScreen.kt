@@ -207,6 +207,8 @@ fun SettingsScreen(nav: NavController, onSignOut: () -> Unit) {
                     }
                 }) { Text("Zapisz link EPG") }
             }
+            NavLine("Godziny w programie TV (strefa czasowa)") { nav.navigate(Routes.EPG_TIME) }
+            NavLine("Nagrania") { nav.navigate(Routes.RECORDINGS) }
 
             // ---- Treści ----
             Group("Treści")

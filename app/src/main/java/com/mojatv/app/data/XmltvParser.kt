@@ -37,9 +37,17 @@ object XmltvParser {
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(input, null)
 
+        fun wall(s: String?): Long? = try {
+            if (s.isNullOrBlank()) null else noZone.parse(s.trim().take(14))?.time
+        } catch (e: Exception) {
+            null
+        }
+
         var channel: String? = null
         var start = 0L
         var end = 0L
+        var wallStart: Long? = null
+        var wallEnd: Long? = null
         var title: String? = null
         var desc: String? = null
         var inProgramme = false
@@ -58,6 +66,8 @@ object XmltvParser {
                             channel = ch
                             start = s!!
                             end = e!!
+                            wallStart = wall(parser.getAttributeValue(null, "start"))
+                            wallEnd = wall(parser.getAttributeValue(null, "stop"))
                             title = null
                             desc = null
                         }
@@ -70,7 +80,7 @@ object XmltvParser {
                     val ch = channel
                     if (ch != null) {
                         result.getOrPut(ch) { ArrayList() }
-                            .add(EpgProgram(title ?: "", desc, start, end))
+                            .add(EpgProgram(title ?: "", desc, start, end, wallStart, wallEnd))
                     }
                 }
                 inProgramme = false

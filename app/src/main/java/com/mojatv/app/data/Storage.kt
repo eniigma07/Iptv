@@ -34,6 +34,29 @@ class Storage(context: Context) {
         get() = prefs.getString("userAgent", Http.DEFAULT_USER_AGENT) ?: Http.DEFAULT_USER_AGENT
         set(v) = prefs.edit().putString("userAgent", v).apply()
 
+    // ---- korekta godzin programu TV ----
+    /** "auto" = godziny jak podaje serwer, "pl" = godziny w programie to czas polski. */
+    var epgMode: String
+        get() = prefs.getString("epgMode", "auto") ?: "auto"
+        set(v) = prefs.edit().putString("epgMode", v).apply()
+
+    var epgShiftMinutes: Int
+        get() = prefs.getInt("epgShift", 0)
+        set(v) = prefs.edit().putInt("epgShift", v).apply()
+
+    var epgShowPolish: Boolean
+        get() = prefs.getBoolean("epgShowPolish", false)
+        set(v) = prefs.edit().putBoolean("epgShowPolish", v).apply()
+
+    // ---- nagrywanie ----
+    var recPadBefore: Int
+        get() = prefs.getInt("recPadBefore", 2)
+        set(v) = prefs.edit().putInt("recPadBefore", v).apply()
+
+    var recPadAfter: Int
+        get() = prefs.getInt("recPadAfter", 10)
+        set(v) = prefs.edit().putInt("recPadAfter", v).apply()
+
     /** Ostatnio używany telewizor do wysyłania obrazu (adres opisu DLNA). */
     var castLocation: String?
         get() = prefs.getString("castLocation", null)

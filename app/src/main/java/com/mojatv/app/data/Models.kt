@@ -110,6 +110,9 @@ data class EpgProgram(
     val description: String?,
     val start: Long,
     val end: Long,
+    /** Godziny „z zegara” zapisane przez dostawcę (cyfry czytane jak UTC) — do korekty strefy. */
+    val wallStart: Long? = null,
+    val wallEnd: Long? = null,
 ) {
     fun progress(now: Long = System.currentTimeMillis()): Float =
         if (end <= start) 0f else ((now - start).toFloat() / (end - start)).coerceIn(0f, 1f)

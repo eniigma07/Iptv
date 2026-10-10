@@ -56,6 +56,8 @@ fun LiveScreen(c: Catalog) {
         }
     }
     val favoriteKeys = remember(favorites) { favorites.map { it.key }.toSet() }
+    var recordFor by remember { mutableStateOf<com.mojatv.app.data.PlayItem?>(null) }
+    recordFor?.let { RecordDialog(it) { recordFor = null } }
 
     Column(Modifier.fillMaxSize()) {
         CategoryChips(options, selected) { selected = it }
@@ -75,6 +77,7 @@ fun LiveScreen(c: Catalog) {
                     isFavorite = item.key in favoriteKeys,
                     onClick = { context.playVideo(items, i) },
                     onToggleFavorite = { repo.storage.toggleFavorite(item) },
+                    onLongClick = { recordFor = item },
                 )
                 HorizontalDivider(color = SurfaceHigh, thickness = 0.5.dp)
             }

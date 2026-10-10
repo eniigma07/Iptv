@@ -193,6 +193,8 @@ class XtreamApi(private val cfg: SourceConfig) {
                 description = decodeB64(o.str("description")),
                 start = start * 1000,
                 end = end * 1000,
+                wallStart = EpgTime.parseWall(o.str("start")),
+                wallEnd = EpgTime.parseWall(o.str("end") ?: o.str("stop")),
             )
         }
     }

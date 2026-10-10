@@ -29,6 +29,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // porządek w nagraniach (np. po wyłączeniu telefonu w trakcie nagrywania)
+        runCatching { com.mojatv.app.rec.RecordingScheduler.rescheduleAll(this) }
         setContent {
             MojaTvTheme {
                 // Surface ustawia jasny kolor tekstu na ciemnym tle na wszystkich ekranach
@@ -45,6 +47,8 @@ object Routes {
     const val SEARCH = "search"
     const val SETTINGS = "settings"
     const val SHOW_SETTINGS = "show-settings"
+    const val RECORDINGS = "recordings"
+    const val EPG_TIME = "epg-time"
     fun movie(id: String) = "movie/${Uri.encode(id)}"
     fun series(id: String) = "series/${Uri.encode(id)}"
 }
@@ -84,5 +88,7 @@ fun AppRoot() {
             })
         }
         composable(Routes.SHOW_SETTINGS) { ShowSettingsScreen(nav) }
+        composable(Routes.RECORDINGS) { RecordingsScreen(nav) }
+        composable(Routes.EPG_TIME) { EpgTimeScreen(nav) }
     }
 }
