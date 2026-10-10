@@ -251,7 +251,8 @@ class PlayerActivity : ComponentActivity() {
         val item = current ?: return
         val pos = if (item.isLive) 0L else player.currentPosition
         saveProgress()
-        player.pause()
+        // zamykamy strumień w telefonie — konta IPTV często pozwalają tylko na jedno połączenie
+        player.stop()
         castTarget = tv
         repo.storage.castLocation = tv.location
         castItem(tv, item, pos)

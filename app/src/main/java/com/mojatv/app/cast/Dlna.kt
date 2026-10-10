@@ -185,22 +185,31 @@ object Dlna {
 
     // ---------------- Sterowanie ----------------
 
-    /** Wysyła materiał na telewizor i uruchamia odtwarzanie. */
-    suspend fun play(r: Renderer, item: PlayItem, startMs: Long = 0) = withContext(Dispatchers.IO) {
-        val url = resolveRedirects(item.url)
+    /**
+     * Wysyła materiał na telewizor i uruchamia odtwarzanie.
+     * Domyślnie przez pośrednika w telefonie (pewniejsze); HLS (.m3u8) idzie bezpośrednio.
+     */
+    suspend fun play(r: Renderer, item: PlayItem, startMs: Long = 0, viaPhone: Boolean = true) = withContext(Dispatchers.IO) {
+        val live = item.isLive
+        val isHls = item.url.substringBefore('?').lowercase().endsWith(".m3u8")
+        val mime = mimeOf(item, item.url)
+        val proxied = if (viaPhone && !isHls) StreamProxy.urlFor(item.url, mime, live) else null
+        val url = proxied ?: resolveRedirects(item.url)
+        val protocolInfo = "http-get:*:$mime:" + if (isHls) "*" else StreamProxy.contentFeatures(live)
+
         try { soap(r, "Stop", "") } catch (e: Exception) { /* nic nie grało */ }
         soap(
             r, "SetAVTransportURI",
-            "<CurrentURI>${esc(url)}</CurrentURI><CurrentURIMetaData>${esc(didl(item, url))}</CurrentURIMetaData>",
+            "<CurrentURI>${esc(url)}</CurrentURI><CurrentURIMetaData>${esc(didl(item, url, protocolInfo))}</CurrentURIMetaData>",
         )
-        kotlinx.coroutines.delay(400)
+        kotlinx.coroutines.delay(500)
         try {
             soap(r, "Play", "<Speed>1</Speed>")
         } catch (e: Exception) {
-            kotlinx.coroutines.delay(1200)
+            kotlinx.coroutines.delay(1500)
             soap(r, "Play", "<Speed>1</Speed>")
         }
-        if (startMs > 5_000 && !item.isLive) {
+        if (startMs > 5_000 && !live) {
             // przewijanie działa dopiero, gdy telewizor zacznie odtwarzać
             for (i in 0 until 10) {
                 kotlinx.coroutines.delay(1000)
@@ -286,14 +295,14 @@ object Dlna {
         }
     }
 
-    private fun didl(item: PlayItem, url: String): String {
+    private fun didl(item: PlayItem, url: String, protocolInfo: String): String {
         val cls = if (item.kind == ContentKind.RADIO) "object.item.audioItem.musicTrack" else "object.item.videoItem"
         val title = if (item.subtitle != null && !item.isLive) "${item.title} – ${item.subtitle}" else item.title
         return "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" " +
             "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\">" +
             "<item id=\"0\" parentID=\"-1\" restricted=\"1\"><dc:title>${esc(title)}</dc:title>" +
             "<upnp:class>$cls</upnp:class>" +
-            "<res protocolInfo=\"http-get:*:${mimeOf(item, url)}:*\">${esc(url)}</res></item></DIDL-Lite>"
+            "<res protocolInfo=\"${esc(protocolInfo)}\">${esc(url)}</res></item></DIDL-Lite>"
     }
 
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
