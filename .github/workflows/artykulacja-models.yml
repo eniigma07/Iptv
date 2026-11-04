@@ -1,0 +1,46 @@
+name: Artykulacja - modele offline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [artykulacja]
+    paths:
+      - tools/models/**
+      - .github/workflows/artykulacja-models.yml
+
+permissions:
+  contents: write
+
+jobs:
+  models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Więcej miejsca na dysku
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Biblioteki
+        run: |
+          pip install -q torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -q transformers==4.46.3 onnx==1.17.0 onnxruntime==1.20.1 huggingface_hub==0.26.5 numpy==1.26.4 scipy==1.14.1
+
+      - name: Budowanie i test modeli
+        run: python tools/models/build_models.py 2>&1 | tee models.log
+
+      - name: Publikacja (release artykulacja-models)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la out
+          gh release view artykulacja-models >/dev/null 2>&1 || \
+            gh release create artykulacja-models --prerelease --target artykulacja \
+              --title "Artykulacja - modele offline" --notes "Pakiet modeli pobierany przez aplikację przy pierwszym uruchomieniu."
+          gh release upload artykulacja-models out/* --clobber
