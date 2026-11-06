@@ -13,6 +13,9 @@ object Prosody {
         val syllables: List<Syllable>,
         val expected: Int,     // indeks sylaby z akcentem głównym (wg słownika)
         val detected: Int,     // indeks sylaby najbardziej wyróżnionej w nagraniu
+        val dur: FloatArray = FloatArray(0),
+        val energy: FloatArray = FloatArray(0),
+        val pitch: FloatArray = FloatArray(0),
     ) {
         val correct get() = expected == detected
     }
@@ -75,7 +78,7 @@ object Prosody {
         val mn = prom.min(); val mx = prom.max()
         val norm = prom.map { if (mx > mn) (it - mn) / (mx - mn) else 0.5f }
         val detected = norm.indices.maxBy { norm[it] }
-        return StressResult(vowels.mapIndexed { i, v -> Syllable(v, norm[i]) }, expected, detected)
+        return StressResult(vowels.mapIndexed { i, v -> Syllable(v, norm[i]) }, expected, detected, dur, en, f0)
     }
 
     /**

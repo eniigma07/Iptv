@@ -14,34 +14,34 @@ import java.time.LocalDate
 class Settings(ctx: Context) {
     private val p = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    var name by mutableStateOf(p.getString("name", "") ?: "")
-        private set
-    var voice by mutableStateOf(p.getString("voice", "af_heart") ?: "af_heart")
-        private set
-    var mixVoice by mutableStateOf(p.getString("mixVoice", "") ?: "")
-        private set
-    var mixRatio by mutableStateOf(p.getFloat("mixRatio", 0.3f))
-        private set
-    var speed by mutableStateOf(p.getFloat("speed", 1.0f))
-        private set
-    var slowSpeed by mutableStateOf(p.getFloat("slowSpeed", 0.72f))
-        private set
-    var autoPlay by mutableStateOf(p.getBoolean("autoPlay", true))
-        private set
-    var showIpa by mutableStateOf(p.getBoolean("showIpa", true))
-        private set
-    var strictness by mutableStateOf(p.getFloat("strictness", 1.0f))
-        private set
-    var dailyGoal by mutableIntStateOf(p.getInt("dailyGoal", 20))
-        private set
-    var reminder by mutableStateOf(p.getBoolean("reminder", false))
-        private set
-    var reminderHour by mutableIntStateOf(p.getInt("reminderHour", 19))
-        private set
-    var reminderMinute by mutableIntStateOf(p.getInt("reminderMinute", 30))
-        private set
-    var onboarded by mutableStateOf(p.getBoolean("onboarded", false))
-        private set
+    private var _name by mutableStateOf(p.getString("name", "") ?: "")
+    val name get() = _name
+    private var _voice by mutableStateOf(p.getString("voice", "af_heart") ?: "af_heart")
+    val voice get() = _voice
+    private var _mixVoice by mutableStateOf(p.getString("mixVoice", "") ?: "")
+    val mixVoice get() = _mixVoice
+    private var _mixRatio by mutableStateOf(p.getFloat("mixRatio", 0.3f))
+    val mixRatio get() = _mixRatio
+    private var _speed by mutableStateOf(p.getFloat("speed", 1.0f))
+    val speed get() = _speed
+    private var _slowSpeed by mutableStateOf(p.getFloat("slowSpeed", 0.72f))
+    val slowSpeed get() = _slowSpeed
+    private var _autoPlay by mutableStateOf(p.getBoolean("autoPlay", true))
+    val autoPlay get() = _autoPlay
+    private var _showIpa by mutableStateOf(p.getBoolean("showIpa", true))
+    val showIpa get() = _showIpa
+    private var _strictness by mutableStateOf(p.getFloat("strictness", 1.0f))
+    val strictness get() = _strictness
+    private var _dailyGoal by mutableIntStateOf(p.getInt("dailyGoal", 20))
+    val dailyGoal get() = _dailyGoal
+    private var _reminder by mutableStateOf(p.getBoolean("reminder", false))
+    val reminder get() = _reminder
+    private var _reminderHour by mutableIntStateOf(p.getInt("reminderHour", 19))
+    val reminderHour get() = _reminderHour
+    private var _reminderMinute by mutableIntStateOf(p.getInt("reminderMinute", 30))
+    val reminderMinute get() = _reminderMinute
+    private var _onboarded by mutableStateOf(p.getBoolean("onboarded", false))
+    val onboarded get() = _onboarded
 
     /** Specyfikacja głosu dla silnika (z mieszaniem). */
     val voiceSpec: String
@@ -50,20 +50,20 @@ class Settings(ctx: Context) {
 
     fun update(block: Settings.() -> Unit) { block() }
 
-    fun setName(v: String) { name = v; p.edit().putString("name", v).apply() }
-    fun setVoice(v: String) { voice = v; p.edit().putString("voice", v).apply() }
-    fun setMix(v: String, r: Float) { mixVoice = v; mixRatio = r; p.edit().putString("mixVoice", v).putFloat("mixRatio", r).apply() }
-    fun setSpeed(v: Float) { speed = v; p.edit().putFloat("speed", v).apply() }
-    fun setSlowSpeed(v: Float) { slowSpeed = v; p.edit().putFloat("slowSpeed", v).apply() }
-    fun setAutoPlay(v: Boolean) { autoPlay = v; p.edit().putBoolean("autoPlay", v).apply() }
-    fun setShowIpa(v: Boolean) { showIpa = v; p.edit().putBoolean("showIpa", v).apply() }
-    fun setStrictness(v: Float) { strictness = v; p.edit().putFloat("strictness", v).apply() }
-    fun setDailyGoal(v: Int) { dailyGoal = v; p.edit().putInt("dailyGoal", v).apply() }
+    fun setName(v: String) { _name = v; p.edit().putString("name", v).apply() }
+    fun setVoice(v: String) { _voice = v; p.edit().putString("voice", v).apply() }
+    fun setMix(v: String, r: Float) { _mixVoice = v; _mixRatio = r; p.edit().putString("mixVoice", v).putFloat("mixRatio", r).apply() }
+    fun setSpeed(v: Float) { _speed = v; p.edit().putFloat("speed", v).apply() }
+    fun setSlowSpeed(v: Float) { _slowSpeed = v; p.edit().putFloat("slowSpeed", v).apply() }
+    fun setAutoPlay(v: Boolean) { _autoPlay = v; p.edit().putBoolean("autoPlay", v).apply() }
+    fun setShowIpa(v: Boolean) { _showIpa = v; p.edit().putBoolean("showIpa", v).apply() }
+    fun setStrictness(v: Float) { _strictness = v; p.edit().putFloat("strictness", v).apply() }
+    fun setDailyGoal(v: Int) { _dailyGoal = v; p.edit().putInt("dailyGoal", v).apply() }
     fun setReminder(on: Boolean, h: Int = reminderHour, m: Int = reminderMinute) {
-        reminder = on; reminderHour = h; reminderMinute = m
+        _reminder = on; _reminderHour = h; _reminderMinute = m
         p.edit().putBoolean("reminder", on).putInt("reminderHour", h).putInt("reminderMinute", m).apply()
     }
-    fun setOnboarded(v: Boolean) { onboarded = v; p.edit().putBoolean("onboarded", v).apply() }
+    fun setOnboarded(v: Boolean) { _onboarded = v; p.edit().putBoolean("onboarded", v).apply() }
 }
 
 data class Attempt(val day: String, val time: Long, val text: String, val score: Int, val source: String)

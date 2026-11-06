@@ -107,6 +107,10 @@ class EngineCheck {
             if (good != null) { n++; if (Prosody.stressMatches(good, model)) ok++ }
             if (bad != null) { nBad++; if (!Prosody.stressMatches(bad, model)) okBad++ }
             println("   ${w.padEnd(16)} słownik=${model?.expected} wzorzec=${model?.detected} dobry=${good?.detected}(${good?.let { Prosody.stressMatches(it, model) }}) zły=${bad?.detected}(${bad?.let { Prosody.stressMatches(it, model) }})")
+            fun fa(x: FloatArray?) = x?.joinToString(",") { f(it) } ?: "-"
+            for ((lab, r) in listOf("wzorzec" to model, "dobry" to good, "zły" to bad)) {
+                println("        $lab dur=[${fa(r?.dur)}] en=[${fa(r?.energy)}] f0=[${fa(r?.pitch)}]")
+            }
         }
         println("AKCENT: poprawny uznany $ok / $n, błędny wykryty $okBad / $nBad")
 

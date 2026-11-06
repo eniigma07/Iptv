@@ -137,24 +137,20 @@ object Units {
         return out
     }
 
-    /** Wyświetlany zapis słowa, np. /ˈθɪŋk/ z oznaczeniem akcentu. */
+    /** Wyświetlany zapis słowa, np. /ˈθɪŋk/ z oznaczeniem akcentu przed sylabą. */
     fun displayIpa(phones: List<Phone>): String {
+        val multi = phones.count { it.vowel } > 1
         val sb = StringBuilder()
-        for (p in phones) {
-            if (p.stress == 1 && phones.count { it.vowel } > 1) {
-                // akcent przed sylabą: przesuń przed spółgłoski nagłosu
-                var k = sb.length
-                val prevPhones = phones.subList(0, phones.indexOf(p))
-                var onset = 0
-                for (q in prevPhones.reversed()) { if (q.vowel) break; onset++ }
-                if (onset > 0 && prevPhones.any { it.vowel }) onset = minOf(onset, 1)
-                var back = 0
-                repeat(onset) { idx ->
-                    val q = prevPhones[prevPhones.size - 1 - idx]
-                    back += q.ipa.length
-                }
-                k -= back
-                sb.insert(k.coerceAtLeast(0), 'ˈ')
+        val starts = IntArray(phones.size)
+        for ((i, p) in phones.withIndex()) {
+            starts[i] = sb.length
+            if (p.stress == 1 && multi) {
+                // przesuń znak akcentu przed spółgłoskę nagłosu sylaby (jeśli jest przed nią samogłoska)
+                var j = i
+                if (i > 0 && !phones[i - 1].vowel && phones.subList(0, i - 1).any { it.vowel }) j = i - 1
+                else if (phones.subList(0, i).none { it.vowel }) j = 0
+                sb.insert(starts[j], 'ˈ')
+                for (k in j..i) starts[k]++
             }
             sb.append(p.ipa)
         }

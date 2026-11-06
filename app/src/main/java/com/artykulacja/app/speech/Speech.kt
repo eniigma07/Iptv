@@ -103,21 +103,54 @@ class Speech(private val ctx: Context, private val modelDir: File, private val s
             val speed = if (slow) settings.slowSpeed else settings.speed
             val key = ttsKey(text, voice, speed, isolated)
             synchronized(ttsCache) { ttsCache[key] }?.let { return@withContext it }
-            val audio = lock.withLock {
-                val toks = phonemizer.tokenize(text, isolated)
-                var phs = phonemizer.kokoroString(toks)
-                // Kokoro potrzebuje znaku końca zdania, inaczej krótkie wypowiedzi brzmią nienaturalnie
-                if (phs.isNotEmpty() && phs.last() !in ".?!") phs += "."
-                // długie teksty — zdaniami
-                val sentences = splitSentences(phs)
-                val parts = sentences.map { tts.synth(it, voice, speed) }
-                val gap = FloatArray((Kokoro.SAMPLE_RATE * 0.25).toInt())
-                parts.flatMapIndexed { i, p -> if (i == 0) p.asList() else gap.asList() + p.asList() }.toFloatArray()
-            }
+            val single = text.trim().let { it.isNotEmpty() && !it.contains(' ') }
+            val audio = (if (single) runCatching { singleWord(text.trim(), voice, speed) }.getOrNull() else null)
+                ?: lock.withLock { synthText(text, isolated, voice, speed) }
             val norm = Dsp.normalizePeak(audio, 0.92f)
             synchronized(ttsCache) { ttsCache[key] = norm }
             norm
         }
+
+    private fun synthText(text: String, isolated: Boolean, voice: String, speed: Float): FloatArray {
+        val toks = phonemizer.tokenize(text, isolated)
+        var phs = phonemizer.kokoroString(toks)
+        // Kokoro potrzebuje znaku końca zdania, inaczej krótkie wypowiedzi brzmią nienaturalnie
+        if (phs.isNotEmpty() && phs.last() !in ".?!") phs += "."
+        // długie teksty — zdaniami
+        val sentences = splitSentences(phs)
+        val parts = sentences.map { tts.synth(it, voice, speed) }
+        val gap = FloatArray((Kokoro.SAMPLE_RATE * 0.25).toInt())
+        return parts.flatMapIndexed { i, p -> if (i == 0) p.asList() else gap.asList() + p.asList() }.toFloatArray()
+    }
+
+    /**
+     * Pojedyncze słowo: Kokoro brzmi nienaturalnie na bardzo krótkich wypowiedziach,
+     * więc syntezujemy je w zdaniu nośnym i wycinamy słowo według dopasowania rozpoznawania.
+     */
+    private suspend fun singleWord(word: String, voice: String, speed: Float): FloatArray? {
+        val tokens = phonemizer.tokenize(word, true)
+        val w = tokens.firstOrNull { it.isWord } ?: return null
+        if (!w.known || w.phon == null) return null
+        val carrier = "ðə nˈɛkst wˈɜɹd ɪz ${w.phon}."
+        return lock.withLock {
+            val a24 = tts.synth(carrier, voice, speed)
+            val a16 = Dsp.resample(a24, 24000, 16000)
+            val tg = scorer.target(phonemizer, "the next word is $word")
+            val asm = scorer.assess(a16, tg)
+            val last = asm.words.lastOrNull() ?: return@withLock null
+            if (!asm.speechFound || last.phones.isEmpty() || last.score < 0.5f) return@withLock null
+            // granica: połowa przerwy między „is” a słowem
+            val prevEnd = asm.words.getOrNull(asm.words.size - 2)?.endSec ?: (last.startSec - 0.1f)
+            val start = ((maxOf(prevEnd, last.startSec - 0.06f)) * 24000).toInt().coerceIn(0, a24.size)
+            val end = ((last.endSec + 0.18f) * 24000).toInt().coerceIn(start, a24.size)
+            if (end - start < 2400) return@withLock null
+            val cut = a24.copyOfRange(start, end)
+            // łagodne wejście i wyjście
+            val f = minOf(240, cut.size / 4)
+            for (i in 0 until f) { val g = i / f.toFloat(); cut[i] *= g; cut[cut.size - 1 - i] *= g }
+            cut
+        }
+    }
 
     /** Synteza z podanych fonemów (próbki głosów). */
     suspend fun speakPhonemes(phon: String, voice: String): FloatArray = withContext(Dispatchers.Default) {

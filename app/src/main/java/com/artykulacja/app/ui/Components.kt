@@ -290,7 +290,7 @@ fun PitchChart(model: FloatArray?, user: FloatArray?, words: List<String>, perWo
                     if (v.isNaN()) { path?.let { drawPath(it, col, style = Stroke(width, cap = StrokeCap.Round)) }; path = null; continue }
                     val x = w * (i + 0.5f) / n
                     val y = h - (v - lo) / (hi - lo) * h
-                    if (path == null) path = Path().apply { moveTo(x, y) } else path.lineTo(x, y)
+                    if (path == null) path = Path().apply { moveTo(x, y) } else path!!.lineTo(x, y)
                 }
                 path?.let { drawPath(it, col, style = Stroke(width, cap = StrokeCap.Round)) }
             }
