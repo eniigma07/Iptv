@@ -1,0 +1,42 @@
+name: Drama - katalog
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
+  push:
+    branches: [drama, main]
+    paths:
+      - tools/catalog/**
+      - .github/workflows/drama-catalog.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: drama-catalog
+  cancel-in-progress: false
+
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -U yt-dlp
+      - name: Katalog z oficjalnych kanałów
+        env:
+          MAX_PLAYLISTS: "60"
+        run: python tools/catalog/build_catalog.py
+      - name: Publikacja (release drama-catalog)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la out
+          gh release view drama-catalog >/dev/null 2>&1 || \
+            gh release create drama-catalog --prerelease --latest=false --target "${GITHUB_REF_NAME}" \
+              --title "Drama - katalog" --notes "Katalog serii z oficjalnych kanałów studiów. Odświeżany codziennie."
+          gh release upload drama-catalog out/catalog.json out/report.txt --clobber

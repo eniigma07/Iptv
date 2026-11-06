@@ -1,0 +1,20 @@
+{
+  "_info": "Tylko oficjalne kanały studiów short drama. Aplikacja odtwarza filmy oficjalnym odtwarzaczem YouTube.",
+  "channels": [
+    {"handle": "@dramaboxapp", "studio": "DramaBox"},
+    {"handle": "@reelshortapp", "studio": "ReelShort"},
+    {"handle": "@NetShort-app", "studio": "NetShort"},
+    {"handle": "@GoodShortApp", "studio": "GoodShort"},
+    {"handle": "@ShortMaxApp", "studio": "ShortMax"},
+    {"handle": "@ShortMax-Official", "studio": "ShortMax"},
+    {"handle": "@FlexTVApp", "studio": "FlexTV"},
+    {"handle": "@DramaWaveApp", "studio": "DramaWave"},
+    {"handle": "@DramaReelsApp", "studio": "DramaReels"},
+    {"handle": "@MoboReels", "studio": "MoboReels"},
+    {"handle": "@KalosTV", "studio": "KalosTV"},
+    {"handle": "@MyDramaApp", "studio": "My Drama"},
+    {"handle": "@ShortTVApp", "studio": "ShortTV"},
+    {"handle": "@DreameShort", "studio": "DreameShort"},
+    {"handle": "@vertTV", "studio": "vertTV"}
+  ]
+}
