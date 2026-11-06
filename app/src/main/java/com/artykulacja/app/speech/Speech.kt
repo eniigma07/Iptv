@@ -36,6 +36,9 @@ class Practice(
 
     /** Czy akcent w słowie i zgadza się ze wzorcem (null = nie mierzono). */
     fun stressOk(i: Int): Boolean? = stress[i]?.let { Prosody.stressMatches(it, modelStress[i]) }
+
+    /** Sylaba, na którą przesunął się akcent (do wyróżnienia na wykresie). */
+    fun stressShift(i: Int): Int? = stress[i]?.let { Prosody.shiftedTo(it, modelStress[i]) }
 }
 
 /** Wzorzec: nagranie syntetyczne z analizą (do porównań intonacji i akcentu). */

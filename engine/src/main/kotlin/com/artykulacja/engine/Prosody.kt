@@ -82,20 +82,27 @@ object Prosody {
     }
 
     /**
-     * Czy akcent użytkownika zgadza się ze wzorcem. Porównujemy z analizą nagrania wzorcowego tą samą metodą,
-     * więc systematyczne błędy pomiaru (np. głośniejsza pierwsza sylaba) się znoszą.
+     * Porównanie akcentu z nagraniem wzorcowym analizowanym tą samą metodą — systematyczne błędy pomiaru
+     * (głośniejszy początek słowa, wydłużony koniec) się znoszą. Liczymy, o ile względem wzorca zyskała
+     * najmocniejsza „niewłaściwa” sylaba w stosunku do akcentowanej (głośność dB + 0,5·wysokość + 0,2·długość).
+     * Zwraca indeks sylaby, na którą przesunął się akcent, albo null, jeśli akcent jest poprawny.
      */
-    fun stressMatches(user: StressResult, model: StressResult?): Boolean {
-        if (model == null || model.syllables.size != user.syllables.size) return user.correct
-        if (user.detected == model.detected) return true
-        val a = user.syllables.map { it.prominence }
-        val b = model.syllables.map { it.prominence }
-        val ma = a.average(); val mb = b.average()
-        var num = 0.0; var da = 0.0; var db = 0.0
-        for (i in a.indices) { num += (a[i] - ma) * (b[i] - mb); da += (a[i] - ma) * (a[i] - ma); db += (b[i] - mb) * (b[i] - mb) }
-        val r = if (da > 1e-9 && db > 1e-9) num / kotlin.math.sqrt(da * db) else 0.0
-        return r >= 0.6
+    fun shiftedTo(user: StressResult, model: StressResult?): Int? {
+        if (model == null || model.syllables.size != user.syllables.size || user.energy.size != model.energy.size) {
+            return if (user.correct) null else user.detected
+        }
+        val k = user.expected
+        fun centered(x: FloatArray): FloatArray { val m = x.average().toFloat(); return FloatArray(x.size) { x[it] - m } }
+        val eu = centered(user.energy); val em = centered(model.energy)
+        val fu = centered(user.pitch); val fm = centered(model.pitch)
+        val du = centered(user.dur); val dm = centered(model.dur)
+        val d = FloatArray(eu.size) { (eu[it] - em[it]) + 0.5f * (fu[it] - fm[it]) + 0.2f * (du[it] - dm[it]) }
+        var best = -1; var bestShift = Float.NEGATIVE_INFINITY
+        for (i in d.indices) if (i != k && d[i] - d[k] > bestShift) { bestShift = d[i] - d[k]; best = i }
+        return if (bestShift > 2.6f) best else null
     }
+
+    fun stressMatches(user: StressResult, model: StressResult?): Boolean = shiftedTo(user, model) == null
 
     private fun z(x: FloatArray): FloatArray {
         val m = x.average().toFloat()

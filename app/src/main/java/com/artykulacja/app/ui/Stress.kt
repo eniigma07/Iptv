@@ -170,7 +170,7 @@ fun StressScreen(nav: NavHostController) {
                         }
                         Text("Ty", style = MaterialTheme.typography.labelMedium, color = C.Gold)
                         Spacer(Modifier.height(6.dp))
-                        StressBars(w.syllables.take(us.syllables.size), us.syllables.map { it.prominence }, w.stress, if (ok) w.stress else us.detected)
+                        StressBars(w.syllables.take(us.syllables.size), us.syllables.map { it.prominence }, w.stress, if (ok) w.stress else (Prosody.shiftedTo(us, modelStress) ?: us.detected))
                     }
                 }
             }

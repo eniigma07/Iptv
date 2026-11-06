@@ -423,7 +423,7 @@ fun DrillScreen(nav: NavHostController, kind: String, arg: String) {
         val w = res.assessment.words.getOrNull(sw)
         if (w != null) {
             ModalBottomSheet(onDismissRequest = { sheetWord = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = C.Surface) {
-                WordDetail(st, w, res.stress[sw], res.stressOk(sw))
+                WordDetail(st, w, res.stress[sw], res.stressOk(sw), res.stressShift(sw))
             }
         }
     }
@@ -493,10 +493,11 @@ private fun ResultPanel(st: DrillState, r: Practice, onWord: (Int) -> Unit) {
             Panel(Modifier.fillMaxWidth()) {
                 Eyebrow("Akcent wyrazowy", C.Text3)
                 Spacer(Modifier.height(6.dp))
-                Text("„${w.text}” — akcent na sylabie ${sr.expected + 1}., u Ciebie mocniejsza wyszła ${sr.detected + 1}.",
+                val moved = r.stressShift(wi) ?: sr.detected
+                Text("„${w.text}” — akcent na sylabie ${sr.expected + 1}., u Ciebie mocniejsza wyszła ${moved + 1}.",
                     style = MaterialTheme.typography.bodyMedium, color = C.Text2)
                 Spacer(Modifier.height(12.dp))
-                StressBars(sr.syllables.map { it.phone.phone.ipa }, sr.syllables.map { it.prominence }, sr.expected, sr.detected)
+                StressBars(sr.syllables.map { it.phone.phone.ipa }, sr.syllables.map { it.prominence }, sr.expected, moved)
             }
         }
         if (r.modelContour != null && r.userContour != null && r.assessment.words.size >= 3) {
@@ -525,7 +526,7 @@ fun intonationTip(s: Float?): String = when {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun WordDetail(st: DrillState, w: WordScore, stress: com.artykulacja.engine.Prosody.StressResult?, stressOk: Boolean?) {
+private fun WordDetail(st: DrillState, w: WordScore, stress: com.artykulacja.engine.Prosody.StressResult?, stressOk: Boolean?, shifted: Int?) {
     val c = app.course
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -568,7 +569,7 @@ private fun WordDetail(st: DrillState, w: WordScore, stress: com.artykulacja.eng
             Eyebrow("Akcent", C.Text3)
             Spacer(Modifier.height(10.dp))
             val ok = stressOk ?: stress.correct
-            StressBars(stress.syllables.map { it.phone.phone.ipa }, stress.syllables.map { it.prominence }, stress.expected, if (ok) stress.expected else stress.detected)
+            StressBars(stress.syllables.map { it.phone.phone.ipa }, stress.syllables.map { it.prominence }, stress.expected, if (ok) stress.expected else (shifted ?: stress.detected))
             Spacer(Modifier.height(8.dp))
             Text(if (ok) "Akcent we właściwym miejscu." else "Akcent powinien paść na sylabę ${stress.expected + 1}. (złota).",
                 style = MaterialTheme.typography.bodySmall, color = if (ok) C.Good else C.Mid)
