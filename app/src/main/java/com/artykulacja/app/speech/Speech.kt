@@ -101,8 +101,11 @@ class Speech(private val ctx: Context, private val modelDir: File, private val s
             synchronized(ttsCache) { ttsCache[key] }?.let { return@withContext it }
             val audio = lock.withLock {
                 val toks = phonemizer.tokenize(text, isolated)
+                var phs = phonemizer.kokoroString(toks)
+                // Kokoro potrzebuje znaku końca zdania, inaczej krótkie wypowiedzi brzmią nienaturalnie
+                if (phs.isNotEmpty() && phs.last() !in ".?!") phs += "."
                 // długie teksty — zdaniami
-                val sentences = splitSentences(phonemizer.kokoroString(toks))
+                val sentences = splitSentences(phs)
                 val parts = sentences.map { tts.synth(it, voice, speed) }
                 val gap = FloatArray((Kokoro.SAMPLE_RATE * 0.25).toInt())
                 parts.flatMapIndexed { i, p -> if (i == 0) p.asList() else gap.asList() + p.asList() }.toFloatArray()

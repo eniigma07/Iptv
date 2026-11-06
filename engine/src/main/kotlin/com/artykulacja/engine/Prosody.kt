@@ -26,7 +26,7 @@ object Prosody {
     /** Analiza akcentu w słowie na podstawie długości, głośności i wysokości samogłosek. */
     fun stress(audio16k: FloatArray, word: WordScore, pitchSt: FloatArray, frameSec: Float = 0.02f): StressResult? {
         val vowels = word.phones.filter { it.phone.vowel }
-        if (vowels.size < 2) return null
+        if (vowels.size < 2 || vowels.none { it.phone.stress == 1 }) return null
         val expected = vowels.indexOfFirst { it.phone.stress == 1 }.let { if (it < 0) 0 else it }
         // Okna sylab: granice w połowie między środkami kolejnych samogłosek.
         val hop = 160 // 10 ms przy 16 kHz
@@ -76,6 +76,22 @@ object Prosody {
         val norm = prom.map { if (mx > mn) (it - mn) / (mx - mn) else 0.5f }
         val detected = norm.indices.maxBy { norm[it] }
         return StressResult(vowels.mapIndexed { i, v -> Syllable(v, norm[i]) }, expected, detected)
+    }
+
+    /**
+     * Czy akcent użytkownika zgadza się ze wzorcem. Porównujemy z analizą nagrania wzorcowego tą samą metodą,
+     * więc systematyczne błędy pomiaru (np. głośniejsza pierwsza sylaba) się znoszą.
+     */
+    fun stressMatches(user: StressResult, model: StressResult?): Boolean {
+        if (model == null || model.syllables.size != user.syllables.size) return user.correct
+        if (user.detected == model.detected) return true
+        val a = user.syllables.map { it.prominence }
+        val b = model.syllables.map { it.prominence }
+        val ma = a.average(); val mb = b.average()
+        var num = 0.0; var da = 0.0; var db = 0.0
+        for (i in a.indices) { num += (a[i] - ma) * (b[i] - mb); da += (a[i] - ma) * (a[i] - ma); db += (b[i] - mb) * (b[i] - mb) }
+        val r = if (da > 1e-9 && db > 1e-9) num / kotlin.math.sqrt(da * db) else 0.0
+        return r >= 0.6
     }
 
     private fun z(x: FloatArray): FloatArray {

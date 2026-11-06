@@ -88,29 +88,51 @@ class EngineCheck {
             println("   powiedziano '$a': P($a)=${f(sc.comparePair(say(a), pa, pb) ?: -1f)}   powiedziano '$b': P($a)=${f(sc.comparePair(say(b), pa, pb) ?: -1f)}")
         }
 
-        println("\n######## 4. AKCENT WYRAZOWY ########")
-        var ok = 0; var n = 0
-        for (w in listOf("development", "analysis", "strategy", "deliverable", "opportunity", "implementation", "presentation", "economy", "economic", "committee", "photographer", "photograph", "success", "budget")) {
-            val audio = say(w, if (n % 2 == 0) "af_heart" else "am_michael")
-            val a = sc.assess(audio, sc.target(ph, w, true))
-            val pc = Prosody.contour(audio)
-            val r = Prosody.stress(audio, a.words[0], pc) ?: continue
-            n++; if (r.correct) ok++
-            println("   ${w.padEnd(16)} oczekiwany=${r.expected} wykryty=${r.detected} ${if (r.correct) "OK" else "XX"}  ${r.syllables.joinToString(" ") { it.phone.phone.ipa + ":" + f(it.prominence) }}")
+        println("\n######## 4. AKCENT WYRAZOWY (wzorzec heart, „użytkownik” michael / zły akcent) ########")
+        var ok = 0; var n = 0; var okBad = 0; var nBad = 0
+        fun stressOf(audio: FloatArray, word: String): Prosody.StressResult? {
+            val a = sc.assess(audio, sc.target(ph, word, true))
+            return Prosody.stress(audio, a.words[0], Prosody.contour(audio))
         }
-        println("AKCENT: $ok / $n")
-        println("-- akcent w zdaniu (słowa wieloylabowe):")
-        for (s2 in listOf("The development of the analysis is our priority.", "This is a great opportunity for the economy.", "The presentation was a success.")) {
-            val audio = say(s2)
-            val a = sc.assess(audio, sc.target(ph, s2))
-            val pc = Prosody.contour(audio)
-            for (w in a.words) {
-                val r = Prosody.stress(audio, w, pc) ?: continue
-                n++; if (r.correct) ok++
-                println("   ${w.text.padEnd(16)} oczekiwany=${r.expected} wykryty=${r.detected} ${if (r.correct) "OK" else "XX"}")
+        val badStress = mapOf(
+            "development" to "dˈɛvələpmənt.", "analysis" to "ˈænəlɪsɪs.", "deliverable" to "dˈɛlɪvəɹəbəl.",
+            "opportunity" to "ˈɑpɚtunəti.", "presentation" to "pɹˈɛzəntAʃən.", "economy" to "ˈikɑnəmi.",
+            "committee" to "kˈɑmɪti.", "photographer" to "fˈOtəɡɹæfəɹ.", "success" to "sˈʌksɛs.",
+            "strategy" to "stɹətˈɛʤi.", "budget" to "bʌʤˈɛt.", "implementation" to "ˈɪmpləməntAʃən.",
+        )
+        for ((w, wrongPh) in badStress) {
+            val model = stressOf(say(w, "af_heart"), w)
+            val good = stressOf(say(w, "am_michael"), w)
+            val bad = stressOf(sayPh(wrongPh, "am_michael"), w)
+            if (good != null) { n++; if (Prosody.stressMatches(good, model)) ok++ }
+            if (bad != null) { nBad++; if (!Prosody.stressMatches(bad, model)) okBad++ }
+            println("   ${w.padEnd(16)} słownik=${model?.expected} wzorzec=${model?.detected} dobry=${good?.detected}(${good?.let { Prosody.stressMatches(it, model) }}) zły=${bad?.detected}(${bad?.let { Prosody.stressMatches(it, model) }})")
+        }
+        println("AKCENT: poprawny uznany $ok / $n, błędny wykryty $okBad / $nBad")
+
+        println("\n######## 4b. POJEDYNCZE SŁOWA: warianty syntezy ########")
+        for (w in listOf("think", "ship", "cut", "go", "focus", "they", "west", "budget")) {
+            val tg = sc.target(ph, w, true)
+            val p = ph.kokoroString(ph.tokenize(w, true))
+            val variants = linkedMapOf(
+                "A '$p.'" to "$p.",
+                "B '$p!'" to "$p!",
+                "C '$p, $p.'" to "$p, $p.",
+                "D '…$p.'" to "… $p.",
+            )
+            val line = StringBuilder("   ${w.padEnd(8)}")
+            for ((label, v) in variants) {
+                val audio = Dsp.resample(tts.synth(v, "af_heart", 1f), 24000, 16000)
+                val a = sc.assess(audio, tg)
+                line.append("  $label=${(a.score * 100).toInt()}[${a.heardText}]")
             }
+            // E: w zdaniu nośnym, ocena słowa w kontekście
+            val carrier = "The next word is $w."
+            val audio = say(carrier)
+            val a = sc.assess(audio, sc.target(ph, carrier))
+            line.append("  E carrier=${(a.words.last().score * 100).toInt()} (${f(a.words.last().startSec)}-${f(a.words.last().endSec)}s)")
+            println(line)
         }
-        println("AKCENT RAZEM: $ok / $n")
 
         println("\n######## 5. INTONACJA ########")
         val s = sentences[3]
