@@ -61,7 +61,30 @@ class Phonemizer(private val lex: Lexicon) {
             out += if (p != null) TextToken(t, p, true, true) else TextToken(t, guess(t), true, false)
             prev = t
         }
+        if (wordsOnly > 1) applyContext(out)
         return out
+    }
+
+    private val vowelStart = "AIOWYaæɑɔəɛɜɪʊʌiuᵊᵻɐ"
+
+    /** Formy zależne od kontekstu (jak w misaki): a → ɐ, the → ðə/ði, to → tə/tʊ, I → ˌI. */
+    private fun applyContext(out: MutableList<TextToken>) {
+        for (i in out.indices) {
+            val t = out[i]
+            if (!t.isWord) continue
+            val next = out.getOrNull(i + 1)?.takeIf { it.isWord }
+            val nextVowel: Boolean? = next?.phon?.trimStart('ˈ', 'ˌ')?.firstOrNull()?.let { it in vowelStart }
+            val w = t.text
+            val p = when {
+                w == "a" || w == "A" && i > 0 -> "ɐ"
+                w.equals("an", true) -> "ɐn"
+                w == "I" -> "ˌI"
+                w.equals("to", true) -> when (nextVowel) { null -> null; false -> "tə"; true -> "tʊ" }
+                w.equals("the", true) -> if (nextVowel == true) "ði" else "ðə"
+                else -> null
+            }
+            if (p != null) out[i] = t.copy(phon = p)
+        }
     }
 
     /** Ciąg fonemów dla Kokoro (interpunkcja zachowana, bo steruje intonacją). */

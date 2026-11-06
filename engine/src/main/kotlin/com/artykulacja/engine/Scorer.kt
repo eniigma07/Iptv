@@ -57,6 +57,16 @@ class Scorer(private val rec: Recognizer) {
             words += t to phones
             wi++
         }
+        // styk słów: ta sama głoska (with the, next time) albo ð po n/l/s/z/t/d (on the, is this)
+        for (i in 1 until words.size) {
+            val prev = words[i - 1].second.lastOrNull() ?: continue
+            val cur = words[i].second
+            val first = cur.firstOrNull() ?: continue
+            val assimilate = first.unit == "ð" && prev.unit in setOf("n", "l", "s", "z", "t", "d", "θ")
+            if (first.unit == prev.unit || assimilate) {
+                words[i] = words[i].first to (listOf(first.copy(weak = true)) + cur.drop(1))
+            }
+        }
         return Target(text, tokens, words)
     }
 

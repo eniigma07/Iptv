@@ -28,25 +28,50 @@ object Prosody {
         val vowels = word.phones.filter { it.phone.vowel }
         if (vowels.size < 2) return null
         val expected = vowels.indexOfFirst { it.phone.stress == 1 }.let { if (it < 0) 0 else it }
+        // Okna sylab: granice w połowie między środkami kolejnych samogłosek.
+        val hop = 160 // 10 ms przy 16 kHz
+        val wStart = (word.phones.first().startFrame * frameSec * 100).toInt()
+        val wEnd = ((word.phones.last().endFrame + 1) * frameSec * 100).toInt()
+        val nFr = max(0, min(audio16k.size / hop, wEnd) - wStart)
+        if (nFr < 4) return null
+        val eDb = FloatArray(nFr) { Dsp.db(Dsp.rms(audio16k, (wStart + it) * hop, (wStart + it + 2) * hop)) }
+        val loud = eDb.max()
+        // przytnij ciszę na brzegach słowa
+        var a0 = 0; while (a0 < nFr - 1 && eDb[a0] < loud - 30f) a0++
+        var a1 = nFr - 1; while (a1 > a0 && eDb[a1] < loud - 30f) a1--
+        val centers = vowels.map { ((it.startFrame + it.endFrame + 1) / 2f * frameSec * 100).toInt() - wStart }
+        val bounds = IntArray(vowels.size + 1)
+        bounds[0] = a0
+        bounds[vowels.size] = a1 + 1
+        for (i in 1 until vowels.size) bounds[i] = ((centers[i - 1] + centers[i]) / 2).coerceIn(a0, a1)
         val dur = FloatArray(vowels.size)
         val en = FloatArray(vowels.size)
         val f0 = FloatArray(vowels.size)
-        for ((i, v) in vowels.withIndex()) {
-            val a = (v.startFrame * frameSec * 16000).toInt()
-            val b = ((v.endFrame + 1) * frameSec * 16000).toInt()
-            dur[i] = (v.endFrame - v.startFrame + 1).toFloat()
-            en[i] = Dsp.db(Dsp.rms(audio16k, a, b))
-            val pa = (v.startFrame * frameSec * 100).toInt().coerceIn(0, max(0, pitchSt.size - 1))
-            val pb = ((v.endFrame + 1) * frameSec * 100).toInt().coerceIn(pa, pitchSt.size)
-            val vals = (pa until pb).map { pitchSt[it] }.filter { !it.isNaN() }.sorted()
-            f0[i] = if (vals.isEmpty()) Float.NaN else vals[vals.size / 2]
+        for (i in vowels.indices) {
+            val lo = bounds[i]; val hi = max(lo + 1, bounds[i + 1])
+            dur[i] = (hi - lo).toFloat()
+            var pk = -120f
+            for (k in lo until min(hi, nFr)) pk = max(pk, eDb[k])
+            en[i] = pk
+            var fp = Float.NaN
+            for (k in lo until hi) {
+                val idx = wStart + k
+                if (idx in pitchSt.indices && !pitchSt[idx].isNaN()) fp = if (fp.isNaN()) pitchSt[idx] else max(fp, pitchSt[idx])
+            }
+            f0[i] = fp
         }
-        val fFill = f0.filter { !it.isNaN() }.let { if (it.isEmpty()) 0f else it.average().toFloat() }
+        val fFill = f0.filter { !it.isNaN() }.let { if (it.isEmpty()) 0f else it.min() }
         for (i in f0.indices) if (f0[i].isNaN()) f0[i] = fFill - 1f
-        // ostatnia sylaba bywa wydłużona — lekka korekta
-        dur[dur.size - 1] *= 0.8f
+        // wydłużenie końca wypowiedzi (final lengthening) — korekta ostatniej sylaby
+        dur[dur.size - 1] *= 0.7f
+        // spadek energii/wysokości w czasie (deklinacja) — lekka kompensacja
+        for (i in vowels.indices) {
+            val pos = i / (vowels.size - 1f)
+            en[i] += 3f * pos
+            f0[i] += 1.0f * pos
+        }
         val zd = z(dur); val ze = z(en); val zf = z(f0)
-        val prom = FloatArray(vowels.size) { 0.35f * zd[it] + 0.4f * ze[it] + 0.25f * zf[it] }
+        val prom = FloatArray(vowels.size) { 0.4f * zd[it] + 0.3f * ze[it] + 0.3f * zf[it] }
         val mn = prom.min(); val mx = prom.max()
         val norm = prom.map { if (mx > mn) (it - mn) / (mx - mn) else 0.5f }
         val detected = norm.indices.maxBy { norm[it] }

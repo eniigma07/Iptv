@@ -62,8 +62,8 @@ object Units {
             pending = 0
             var acc = accept
             var wk = weak
-            if (fw && st == 0) {
-                acc = acc + setOf("ʌ", "ɪ", "ʊ", "ɚ", "ɛ", "ɑ", "i", "u", "æ")
+            if (fw) {
+                acc = acc + setOf("ʌ", "ɪ", "ʊ", "ɚ", "ɛ", "ɑ", "i", "u", "æ", "ɔ")
                 wk = true
             }
             if (unit == "ɑ") acc = acc + "ɔ"
@@ -87,6 +87,7 @@ object Units {
                 'ɜ' -> if (nx == 'ɹ') { v(if (pending == 1) "ɝ" else "ɚ", "ɚ"); i++ } else v("ɜ", "ɚ")
                 'ə' -> if (nx == 'ɹ' && !nextIsVowel(i + 2)) { v("ɚ", "ɚ", setOf("ʌ")); i++ } else v("ə", "ʌ", setOf("ɪ", "ɛ"), weak = true)
                 'ᵊ' -> v("ə", "ʌ", setOf("ɪ"), weak = true)
+                'ɐ' -> v("ə", "ʌ", setOf("ɪ", "ɛ", "æ"), weak = true)
                 'ᵻ' -> v("ɪ", "ɪ", setOf("ʌ"), weak = true)
                 'i' -> v("i", "i", if (pending == 0) setOf("ɪ") else emptySet())
                 'ɪ' -> v("ɪ", "ɪ", if (pending == 0) setOf("ʌ", "i") else emptySet())
@@ -106,9 +107,24 @@ object Units {
             }
             i++
         }
-        // „h” w słowach funkcyjnych (his, have, him) często znika w mowie ciągłej
+        // „h” i „r” po samogłosce w słowach funkcyjnych często znikają w mowie ciągłej (his, for, are)
         if (fw) for (k in out.indices) {
-            if (out[k].unit == "h") out[k] = out[k].copy(weak = true)
+            val q = out[k]
+            if (q.unit == "h" || (q.unit == "ɹ" && k > 0 && out[k - 1].vowel)) out[k] = q.copy(weak = true)
+        }
+        for (k in out.indices) {
+            val q = out[k]
+            val prev = out.getOrNull(k - 1)
+            val next = out.getOrNull(k + 1)
+            when {
+                // poślizgi między samogłoskami (actually → ækʧuəli)
+                (q.unit == "w" || q.unit == "j") && prev?.vowel == true && next?.vowel == true ->
+                    out[k] = q.copy(weak = true)
+                q.unit == "tʃ" && k > 0 -> out[k] = q.copy(accept = q.accept + "ʃ")
+                q.unit == "oʊ" && (next?.unit == "l" || next?.unit == "ɹ") -> out[k] = q.copy(accept = q.accept + setOf("o", "ɔ"))
+                q.unit == "ɛ" && next?.unit == "l" -> out[k] = q.copy(accept = q.accept + "æ")
+                q.unit == "ð" && wordText.equals("with", true) -> out[k] = q.copy(accept = q.accept + "θ")
+            }
         }
         // „t”/„d” w zbitkach na końcu (next steps, first time) bywa niesłyszalne
         if (out.size >= 2) {

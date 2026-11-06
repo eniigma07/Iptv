@@ -25,14 +25,16 @@ class EngineCheck {
         fun say(text: String, voice: String = "af_heart", speed: Float = 1f): FloatArray {
             val toks = ph.tokenize(text)
             val t0 = System.nanoTime()
-            val a = tts.synth(ph.kokoroString(toks), voice, speed)
+            var phs = ph.kokoroString(toks)
+            if (phs.isNotEmpty() && phs.last() !in ".?!") phs += "."
+            val a = tts.synth(phs, voice, speed)
             val ms = (System.nanoTime() - t0) / 1e6
             val a16 = Dsp.resample(a, 24000, 16000)
             println("   [TTS ${ms.toInt()} ms, ${f(a.size / 24000f)} s]  ${ph.kokoroString(toks)}")
             return a16
         }
         fun sayPh(phon: String, voice: String = "af_heart"): FloatArray =
-            Dsp.resample(tts.synth(phon, voice, 1f), 24000, 16000)
+            Dsp.resample(tts.synth(if (phon.last() in ".?!") phon else "$phon.", voice, 1f), 24000, 16000)
 
         fun report(label: String, audio: FloatArray, target: String, isolated: Boolean = false): Assessment {
             val tg = sc.target(ph, target, isolated)
@@ -71,7 +73,7 @@ class EngineCheck {
         )
         for ((said, tgt) in wrong) report("powiedziano /$said/", sayPh(said), tgt, isolated = true)
         println("-- poprawne słowa w izolacji:")
-        for (w in listOf("think", "they", "ship", "sheep", "bad", "west", "sing", "cut", "project", "go", "manager")) {
+        for (w in listOf("think", "they", "ship", "sheep", "bad", "west", "sing", "cut", "project", "go", "manager", "three", "thanks", "very", "world", "focus")) {
             report("ok", say(w), w, isolated = true)
         }
         println("-- zdanie z polskim akcentem:")
@@ -89,7 +91,7 @@ class EngineCheck {
         println("\n######## 4. AKCENT WYRAZOWY ########")
         var ok = 0; var n = 0
         for (w in listOf("development", "analysis", "strategy", "deliverable", "opportunity", "implementation", "presentation", "economy", "economic", "committee", "photographer", "photograph", "success", "budget")) {
-            val audio = say(w)
+            val audio = say(w, if (n % 2 == 0) "af_heart" else "am_michael")
             val a = sc.assess(audio, sc.target(ph, w, true))
             val pc = Prosody.contour(audio)
             val r = Prosody.stress(audio, a.words[0], pc) ?: continue
@@ -97,6 +99,18 @@ class EngineCheck {
             println("   ${w.padEnd(16)} oczekiwany=${r.expected} wykryty=${r.detected} ${if (r.correct) "OK" else "XX"}  ${r.syllables.joinToString(" ") { it.phone.phone.ipa + ":" + f(it.prominence) }}")
         }
         println("AKCENT: $ok / $n")
+        println("-- akcent w zdaniu (słowa wieloylabowe):")
+        for (s2 in listOf("The development of the analysis is our priority.", "This is a great opportunity for the economy.", "The presentation was a success.")) {
+            val audio = say(s2)
+            val a = sc.assess(audio, sc.target(ph, s2))
+            val pc = Prosody.contour(audio)
+            for (w in a.words) {
+                val r = Prosody.stress(audio, w, pc) ?: continue
+                n++; if (r.correct) ok++
+                println("   ${w.text.padEnd(16)} oczekiwany=${r.expected} wykryty=${r.detected} ${if (r.correct) "OK" else "XX"}")
+            }
+        }
+        println("AKCENT RAZEM: $ok / $n")
 
         println("\n######## 5. INTONACJA ########")
         val s = sentences[3]
