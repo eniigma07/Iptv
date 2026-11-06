@@ -1,0 +1,61 @@
+name: Artykulacja - APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [artykulacja]
+    paths:
+      - app/**
+      - engine/src/main/**
+      - build.gradle.kts
+      - settings.gradle.kts
+      - gradle.properties
+      - .github/workflows/artykulacja-apk.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Budowanie
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :app:assembleRelease --stacktrace 2>&1 | tee build.log
+
+      - name: Pokaż błędy kompilacji
+        if: failure()
+        shell: bash
+        run: |
+          MSG=$(grep -E "^e: |error:|What went wrong|> " build.log | grep -v "^> Task" | head -80 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Kompilacja::$MSG"
+
+      - name: Nazwa pliku
+        run: cp app/build/outputs/apk/release/app-release.apk Artykulacja.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Artykulacja-apk
+          path: Artykulacja.apk
+
+      - name: Publikacja (link do pobrania na telefon)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view artykulacja-apk >/dev/null 2>&1 || \
+            gh release create artykulacja-apk --prerelease --target artykulacja \
+              --title "Artykulacja - aplikacja" --notes "Najnowsza wersja aplikacji Artykulacja (Android). Pobierz Artykulacja.apk na telefonie i zainstaluj."
+          gh release upload artykulacja-apk Artykulacja.apk --clobber

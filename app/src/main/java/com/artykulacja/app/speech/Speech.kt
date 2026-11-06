@@ -30,8 +30,12 @@ class Practice(
     val intonation: Float?,
     val stress: Map<Int, Prosody.StressResult>,
     val wpm: Int?,
+    val modelStress: Map<Int, Prosody.StressResult> = emptyMap(),
 ) {
     val score get() = (assessment.score * 100).toInt()
+
+    /** Czy akcent w słowie i zgadza się ze wzorcem (null = nie mierzono). */
+    fun stressOk(i: Int): Boolean? = stress[i]?.let { Prosody.stressMatches(it, modelStress[i]) }
 }
 
 /** Wzorzec: nagranie syntetyczne z analizą (do porównań intonacji i akcentu). */
@@ -166,13 +170,19 @@ class Speech(private val ctx: Context, private val modelDir: File, private val s
         val wordCount = asm.words.size
         var model: ModelClip? = null
         var inton: Float? = null
-        if (wordCount >= 3) {
+        val modelStress = HashMap<Int, Prosody.StressResult>()
+        if (wordCount >= 3 || stress.isNotEmpty()) {
             model = runCatching { modelClip(text, isolated) }.getOrNull()
-            inton = model?.contour?.let { Prosody.similarity(it, userContour) }
+            if (wordCount >= 3) inton = model?.contour?.let { Prosody.similarity(it, userContour) }
+            val ma = model?.assessment
+            if (model != null && ma != null && stress.isNotEmpty()) {
+                val mp = Prosody.contour(model.audio16k)
+                for (i in stress.keys) ma.words.getOrNull(i)?.let { mw -> Prosody.stress(model.audio16k, mw, mp)?.let { modelStress[i] = it } }
+            }
         }
         val dur = (asm.words.lastOrNull()?.endSec ?: 0f) - (asm.words.firstOrNull()?.startSec ?: 0f)
         val wpm = if (wordCount >= 4 && dur > 0.5f) (wordCount / dur * 60).toInt() else null
-        Practice(text, asm, audio16k, userContour, model?.contour, inton, stress, wpm)
+        Practice(text, asm, audio16k, userContour, model?.contour, inton, stress, wpm, modelStress)
     }
 
     suspend fun comparePair(audio16k: FloatArray, a: String, b: String): Float? = withContext(Dispatchers.Default) {
