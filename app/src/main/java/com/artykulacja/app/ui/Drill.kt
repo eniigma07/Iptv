@@ -290,7 +290,7 @@ fun DrillScreen(nav: NavHostController, kind: String, arg: String) {
     if (engine != Speech.State.Ready) {
         Column(Modifier.fillMaxSize()) {
             TopBar("Ćwiczenie", { nav.popBackStack() })
-            Loading(if (engine is Speech.State.Failed) "Silnik mowy nie działa: ${(engine as Speech.State.Failed).message}" else "Przygotowuję silnik mowy…")
+            EngineWait()
         }
         return
     }

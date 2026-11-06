@@ -70,7 +70,7 @@ fun StressScreen(nav: NavHostController) {
         TopBar("Akcent wyrazowy", { nav.popBackStack() }) {
             Text("$points pkt", style = MaterialTheme.typography.labelLarge, color = C.Gold, modifier = Modifier.padding(end = 16.dp))
         }
-        if (engine != Speech.State.Ready) { Loading("Przygotowuję silnik mowy…"); return }
+        if (engine != Speech.State.Ready) { EngineWait(); return }
         val w = words[idx % words.size]
 
         fun play(slow: Boolean) = scope.launch { app.player.play(app.speech.speak(w.word, slow, true), 24000, "m") }

@@ -272,7 +272,7 @@ fun VoicesScreen(nav: NavHostController, onboarding: Boolean) {
 
     Column(Modifier.fillMaxSize()) {
         TopBar(if (onboarding) "Wybierz głos" else "Głos wzorcowy", if (onboarding) null else ({ nav.popBackStack() }))
-        if (engine != Speech.State.Ready) { Loading("Przygotowuję silnik mowy…"); return }
+        if (engine != Speech.State.Ready) { EngineWait(); return }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Text("Tym głosem będziesz słyszeć wzorce. Posłuchaj kilku i wybierz ten, który najchętniej naśladujesz. Zmienisz go w każdej chwili.",

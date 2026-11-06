@@ -26,5 +26,6 @@ adb shell run-as $PKG ls -la files/models
 adb logcat -c
 python3 tools/ui/tour.py
 adb logcat -d > shots/logcat.txt
+adb logcat -d -s Artykulacja:* AndroidRuntime:E onnxruntime:* > shots/app_log.txt
 grep -E "FATAL|AndroidRuntime|Exception" shots/logcat.txt | head -80 > shots/errors.txt
 cat shots/errors.txt

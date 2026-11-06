@@ -43,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -332,6 +333,22 @@ fun StressBars(labels: List<String>, values: List<Float>, expected: Int, detecte
             }
         }
     }
+}
+
+/** Ekran oczekiwania na silnik mowy (z komunikatem o błędzie i ponowieniem). */
+@Composable
+fun EngineWait() {
+    val st by com.artykulacja.app.app.speech.state.collectAsState()
+    val s = st
+    if (s is com.artykulacja.app.speech.Speech.State.Failed) {
+        Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Nie udało się uruchomić silnika mowy", style = MaterialTheme.typography.titleMedium, color = C.Bad, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(8.dp))
+            Text(s.message, style = MaterialTheme.typography.bodySmall, color = C.Text2, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(16.dp))
+            GhostButton("Spróbuj ponownie") { com.artykulacja.app.app.speech.retry(); com.artykulacja.app.app.startEngine() }
+        }
+    } else Loading("Przygotowuję silnik mowy… (pierwsze uruchomienie trwa kilkanaście sekund)")
 }
 
 @Composable

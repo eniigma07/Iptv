@@ -1,6 +1,7 @@
 package com.artykulacja.app.speech
 
 import android.content.Context
+import android.util.Log
 import com.artykulacja.app.data.Settings
 import com.artykulacja.engine.Assessment
 import com.artykulacja.engine.Dsp
@@ -44,6 +45,8 @@ class Practice(
 /** Wzorzec: nagranie syntetyczne z analizą (do porównań intonacji i akcentu). */
 class ModelClip(val audio24k: FloatArray, val audio16k: FloatArray, val assessment: Assessment?, val contour: FloatArray?)
 
+private const val TAG = "Artykulacja"
+
 class Speech(private val ctx: Context, private val modelDir: File, private val settings: Settings) {
 
     sealed interface State {
@@ -75,21 +78,29 @@ class Speech(private val ctx: Context, private val modelDir: File, private val s
         if (_state.value == State.Ready || _state.value == State.Loading) return@withContext
         _state.value = State.Loading
         try {
+            var t = System.currentTimeMillis()
+            fun lap(what: String) { val n = System.currentTimeMillis(); Log.i(TAG, "$what: ${n - t} ms"); t = n }
             val lex = ctx.assets.open("lexicon.tsv.gz").use { Lexicon.load(it) }
             phonemizer = Phonemizer(lex)
+            lap("słownik")
             val vocab = Kokoro.loadVocab(ctx.assets.open("kokoro_vocab.json").bufferedReader().use { it.readText() })
             val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 6)
             tts = Kokoro(modelDir, vocab, threads)
+            lap("Kokoro")
             rec = Recognizer(modelDir, threads)
+            lap("rozpoznawanie")
             scorer = Scorer(rec)
             _state.value = State.Ready
             // rozgrzanie (pierwsze uruchomienie modeli jest wolniejsze)
             runCatching { tts.synth("hˈɛlO", settings.voiceSpec, 1f) }
             runCatching { rec.posteriors(FloatArray(16000)) }
-        } catch (t: Throwable) {
-            _state.value = State.Failed(t.message ?: t.toString())
+        } catch (e: Throwable) {
+            Log.e(TAG, "Nie udało się uruchomić silnika", e)
+            _state.value = State.Failed(e.message ?: e.toString())
         }
     }
+
+    fun retry() { if (_state.value is State.Failed) _state.value = State.Idle }
 
     suspend fun awaitReady(): Boolean {
         val s = state.first { it == State.Ready || it is State.Failed }

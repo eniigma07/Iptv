@@ -90,7 +90,7 @@ fun PairsScreen(nav: NavHostController, unitId: String) {
             Tab(tab == 0, { tab = 0 }, text = { Text("Słuchaj", style = MaterialTheme.typography.labelLarge) }, selectedContentColor = C.Gold, unselectedContentColor = C.Text3)
             Tab(tab == 1, { tab = 1 }, text = { Text("Mów", style = MaterialTheme.typography.labelLarge) }, selectedContentColor = C.Gold, unselectedContentColor = C.Text3)
         }
-        if (engine != Speech.State.Ready) { Loading("Przygotowuję silnik mowy…"); return }
+        if (engine != Speech.State.Ready) { EngineWait(); return }
         if (tab == 0) ListenQuiz(u.pairs) else SpeakPairs(u.pairs)
     }
 }
