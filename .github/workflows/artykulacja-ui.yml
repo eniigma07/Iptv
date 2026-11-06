@@ -1,0 +1,72 @@
+name: Artykulacja - przegląd ekranów (emulator)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [artykulacja]
+    paths:
+      - tools/ui/**
+      - .github/workflows/artykulacja-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Więcej miejsca
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: APK (debug, z x86_64)
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug -Pemu --stacktrace
+
+      - name: Modele
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p models
+          gh release download artykulacja-models -D models -R ${{ github.repository }}
+
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Emulator i przegląd
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 6144M
+          disk-size: 8G
+          cores: 4
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          disable-animations: true
+          script: bash tools/ui/run.sh
+
+      - name: Zrzuty do gałęzi artykulacja-shots
+        if: always()
+        run: |
+          mkdir -p /tmp/s && cp -r shots/* /tmp/s/ || true
+          git config user.name "ci" && git config user.email "ci@example.com"
+          git checkout --orphan artykulacja-shots
+          git rm -rfq . >/dev/null 2>&1 || true
+          rm -rf ./* .github .gitattributes .gitignore 2>/dev/null || true
+          cp -r /tmp/s/* . || true
+          git add -A && git commit -qm "zrzuty ${GITHUB_SHA::7}" && git push -f origin artykulacja-shots

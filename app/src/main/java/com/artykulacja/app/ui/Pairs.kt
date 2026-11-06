@@ -194,7 +194,7 @@ private fun SpeakPairs(pairs: List<Pair<String, String>>) {
             app.player.stop()
             verdict = null; msg = null
             recording = true
-            val audio = app.recorder.record(maxSec = 5f, silenceSec = 0.8f)
+            val audio = fakeMic(DrillItem(target, true)) ?: app.recorder.record(maxSec = 5f, silenceSec = 0.8f)
             recording = false
             busy = true
             val p = app.speech.comparePair(audio, target, other)

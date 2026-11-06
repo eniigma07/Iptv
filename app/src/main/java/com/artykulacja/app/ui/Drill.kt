@@ -157,6 +157,15 @@ fun issuesOf(pr: Practice, limit: Int = 3): List<Issue> {
     return out
 }
 
+/** Tylko w wersji testowej: zamiast mikrofonu użyj wzorca (do automatycznych zrzutów ekranu na emulatorze). */
+suspend fun fakeMic(item: DrillItem): FloatArray? {
+    if (!com.artykulacja.app.BuildConfig.DEBUG) return null
+    if (!java.io.File(app.filesDir, "debug_fake_mic").exists()) return null
+    val a = app.speech.speak(item.text, false, item.isolated, "am_michael")
+    kotlinx.coroutines.delay(1200)
+    return com.artykulacja.engine.Dsp.resample(a, 24000, 16000)
+}
+
 class DrillState(val spec: DrillSpec, private val scope: CoroutineScope) {
     enum class Phase { Idle, Recording, Analyzing, Done }
 
@@ -219,7 +228,7 @@ class DrillState(val spec: DrillSpec, private val scope: CoroutineScope) {
         app.player.stop()
         message = null
         phase = Phase.Recording
-        val audio = app.recorder.record()
+        val audio = fakeMic(item) ?: app.recorder.record()
         phase = Phase.Analyzing
         val pr = runCatching { app.speech.assess(audio, item.text, item.isolated) }.getOrElse {
             message = "Coś poszło nie tak: ${it.message}"; phase = Phase.Idle; return

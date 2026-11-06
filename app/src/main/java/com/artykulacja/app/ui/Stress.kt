@@ -79,7 +79,7 @@ fun StressScreen(nav: NavHostController) {
             scope.launch {
                 app.player.stop(); msg = null
                 recording = true
-                val audio = app.recorder.record(maxSec = 6f, silenceSec = 0.8f)
+                val audio = fakeMic(DrillItem(w.word, true)) ?: app.recorder.record(maxSec = 6f, silenceSec = 0.8f)
                 recording = false; busy = true
                 val pr = app.speech.assess(audio, w.word, true)
                 if (!pr.assessment.speechFound) { busy = false; msg = "Nie słyszę — spróbuj jeszcze raz."; return@launch }
