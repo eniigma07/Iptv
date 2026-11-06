@@ -1,0 +1,46 @@
+name: Artykulacja - test silnika
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [artykulacja]
+    paths:
+      - engine/**
+      - app/src/main/assets/**
+      - .github/workflows/artykulacja-engine.yml
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Modele
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p models
+          gh release download artykulacja-models -D models -R ${{ github.repository }}
+          ls -la models
+
+      - name: Test silnika na prawdziwych modelach
+        env:
+          MODELS_DIR: ${{ github.workspace }}/models
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :engine:test --stacktrace 2>&1 | tee engine.log
+
+      - name: Pokaż błędy
+        if: failure()
+        run: |
+          MSG=$(grep -E "^e: |error:|What went wrong|Exception|> " engine.log | grep -v "^> Task" | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Silnik::$MSG"
