@@ -15,7 +15,7 @@ class EngineCheck {
         if (dirName.isNullOrEmpty()) { println("MODELS_DIR nie ustawione — pomijam"); return }
         val dir = File(dirName)
         val root = File(System.getProperty("user.dir")).parentFile
-        val lex = Lexicon.load(File(root, "app/src/main/assets/lexicon.tsv.gz").inputStream())
+        val lex = Lexicon.load(File(root, "app/src/main/assets/lexicon.dat").inputStream())
         val ph = Phonemizer(lex)
         val tts = Kokoro(dir, Kokoro.loadVocab(File(root, "app/src/main/assets/kokoro_vocab.json").readText()))
         val rec = Recognizer(dir)

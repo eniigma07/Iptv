@@ -80,7 +80,7 @@ class Speech(private val ctx: Context, private val modelDir: File, private val s
         try {
             var t = System.currentTimeMillis()
             fun lap(what: String) { val n = System.currentTimeMillis(); Log.i(TAG, "$what: ${n - t} ms"); t = n }
-            val lex = ctx.assets.open("lexicon.tsv.gz").use { Lexicon.load(it) }
+            val lex = ctx.assets.open("lexicon.dat").use { Lexicon.load(it) }
             phonemizer = Phonemizer(lex)
             lap("słownik")
             val vocab = Kokoro.loadVocab(ctx.assets.open("kokoro_vocab.json").bufferedReader().use { it.readText() })

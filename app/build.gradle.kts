@@ -36,7 +36,7 @@ android {
         buildConfig = true
     }
     androidResources {
-        noCompress += listOf("gz")
+        noCompress += listOf("dat")
     }
     lint {
         checkReleaseBuilds = false
