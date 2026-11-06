@@ -129,12 +129,11 @@ object Units {
             }
         }
         // „t”/„d” w zbitkach na końcu (next steps, first time) bywa niesłyszalne
+        // zwarcie na końcu słowa bywa niewypuszczone (cut, budget) — pominięcie dopuszczalne,
+        // ale zamiana (np. d → t) nadal jest wykrywana
         if (out.size >= 2) {
             val last = out.last()
-            val prev = out[out.size - 2]
-            if ((last.unit == "t" || last.unit == "d") && !prev.vowel && prev.unit != "ɹ") {
-                out[out.size - 1] = last.copy(weak = true)
-            }
+            if (last.unit in setOf("p", "t", "k", "b", "d", "ɡ")) out[out.size - 1] = last.copy(weak = true)
         }
         return out
     }
