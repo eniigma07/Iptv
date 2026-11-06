@@ -121,6 +121,8 @@ object Units {
                 (q.unit == "w" || q.unit == "j") && prev?.vowel == true && next?.vowel == true ->
                     out[k] = q.copy(weak = true)
                 q.unit == "tʃ" && k > 0 -> out[k] = q.copy(accept = q.accept + "ʃ")
+                // „r” po ɔ/ɑ przed spółgłoską zlewa się z samogłoską (quarter, part)
+                q.unit == "ɹ" && (prev?.unit == "ɔ" || prev?.unit == "ɑ") && next != null && !next.vowel -> out[k] = q.copy(weak = true)
                 q.unit == "oʊ" && (next?.unit == "l" || next?.unit == "ɹ") -> out[k] = q.copy(accept = q.accept + setOf("o", "ɔ"))
                 q.unit == "ɛ" && next?.unit == "l" -> out[k] = q.copy(accept = q.accept + "æ")
                 q.unit == "ð" && wordText.equals("with", true) -> out[k] = q.copy(accept = q.accept + "θ")

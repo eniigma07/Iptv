@@ -66,6 +66,11 @@ class Scorer(private val rec: Recognizer) {
             if (first.unit == prev.unit || assimilate) {
                 words[i] = words[i].first to (listOf(first.copy(weak = true)) + cur.drop(1))
             }
+            // zwarcie na końcu słowa przed spółgłoską bywa niesłyszalne (think we, good point)
+            if (!first.vowel && prev.unit in setOf("p", "t", "k", "b", "d", "ɡ")) {
+                val pw = words[i - 1].second
+                words[i - 1] = words[i - 1].first to (pw.dropLast(1) + prev.copy(weak = true))
+            }
         }
         return Target(text, tokens, words)
     }

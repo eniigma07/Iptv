@@ -127,6 +127,14 @@ object Prosody {
                 if (vals.isNotEmpty()) out[wi * perWord + k] = vals.average().toFloat()
             }
         }
+        // usunięcie skoków oktawowych: mediana z 3 i ograniczenie zakresu
+        val med = out.copyOf()
+        for (i in 1 until out.size - 1) {
+            val w = listOf(out[i - 1], out[i], out[i + 1]).filter { !it.isNaN() }.sorted()
+            if (!out[i].isNaN() && w.size == 3) med[i] = w[1]
+        }
+        for (i in med.indices) if (!med[i].isNaN()) med[i] = med[i].coerceIn(-9f, 9f)
+        System.arraycopy(med, 0, out, 0, out.size)
         // wypełnienie krótkich luk
         var last = Float.NaN
         var gap = 0

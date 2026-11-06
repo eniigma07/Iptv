@@ -111,28 +111,37 @@ class EngineCheck {
         }
         println("AKCENT: poprawny uznany $ok / $n, błędny wykryty $okBad / $nBad")
 
-        println("\n######## 4b. POJEDYNCZE SŁOWA: warianty syntezy ########")
-        for (w in listOf("think", "ship", "cut", "go", "focus", "they", "west", "budget")) {
-            val tg = sc.target(ph, w, true)
-            val p = ph.kokoroString(ph.tokenize(w, true))
-            val variants = linkedMapOf(
-                "A '$p.'" to "$p.",
-                "B '$p!'" to "$p!",
-                "C '$p, $p.'" to "$p, $p.",
-                "D '…$p.'" to "… $p.",
-            )
-            val line = StringBuilder("   ${w.padEnd(8)}")
-            for ((label, v) in variants) {
-                val audio = Dsp.resample(tts.synth(v, "af_heart", 1f), 24000, 16000)
-                val a = sc.assess(audio, tg)
-                line.append("  $label=${(a.score * 100).toInt()}[${a.heardText}]")
-            }
-            // E: w zdaniu nośnym, ocena słowa w kontekście
-            val carrier = "The next word is $w."
-            val audio = say(carrier)
-            val a = sc.assess(audio, sc.target(ph, carrier))
-            line.append("  E carrier=${(a.words.last().score * 100).toInt()} (${f(a.words.last().startSec)}-${f(a.words.last().endSec)}s)")
-            println(line)
+        println("\n######## 4b. POJEDYNCZE SŁOWA: ocena nagrania słowa (bez kontekstu / cisza / prefiks) ########")
+        fun cutWord(word: String, voice: String, phonOverride: String? = null): FloatArray? {
+            val w = ph.tokenize(word, true).first { it.isWord }
+            val a24 = tts.synth("ðə nˈɛkst wˈɜɹd ɪz ${phonOverride ?: w.phon}.", voice, 1f)
+            val a16 = Dsp.resample(a24, 24000, 16000)
+            val asm = sc.assess(a16, sc.target(ph, "the next word is $word"))
+            val last = asm.words.last()
+            val prevEnd = asm.words[asm.words.size - 2].endSec
+            val st = (maxOf(prevEnd, last.startSec - 0.06f) * 16000).toInt()
+            val en = ((last.endSec + 0.18f) * 16000).toInt().coerceAtMost(a16.size)
+            return a16.copyOfRange(st, en)
+        }
+        val prefix = Dsp.resample(tts.synth("ðə nˈɛkst wˈɜɹd ɪz", "af_heart", 1f), 24000, 16000)
+        fun variants(audio: FloatArray, tgt: String): String {
+            val tg = sc.target(ph, tgt, true)
+            val alone = sc.assess(audio, tg)
+            val pad = FloatArray(6400)
+            val padded = sc.assess(pad + audio + pad, tg)
+            val tgc = sc.target(ph, "the next word is $tgt")
+            val pre = sc.assess(prefix + FloatArray(1600) + audio + pad, tgc)
+            val lw = pre.words.last()
+            fun d(ws: WordScore) = ws.phones.joinToString(" ") { it.phone.ipa + (it.score * 100).toInt() + (it.heard?.let { h -> "→$h" } ?: "") }
+            return "sam=${(alone.score * 100).toInt()}[${d(alone.words[0])}]  cisza=${(padded.score * 100).toInt()}  prefiks=${(lw.score * 100).toInt()}[${d(lw)}]"
+        }
+        for (w in listOf("think", "ship", "sheep", "cut", "go", "focus", "they", "west", "budget", "manager", "three", "very", "world", "bad")) {
+            val audio = cutWord(w, "am_michael") ?: continue
+            println("   OK  ${w.padEnd(8)} ${variants(audio, w)}")
+        }
+        for ((said, tgt) in listOf("sˈɪŋk" to "think", "dˈA" to "they", "vˈɛst" to "west", "ʃˈip" to "ship", "ɡˈo" to "go", "bˈæt" to "bad", "fɹˈi" to "three")) {
+            val audio = cutWord(tgt, "am_michael", said) ?: continue
+            println("   ZŁE /$said/→${tgt.padEnd(6)} ${variants(audio, tgt)}")
         }
 
         println("\n######## 5. INTONACJA ########")
