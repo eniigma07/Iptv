@@ -1,3 +1,4 @@
+# Przegląd ekranów aplikacji Artykulacja (uruchamiany w CI na emulatorze)
 import sys, time
 sys.path.insert(0, "tools/ui")
 from ui import *
