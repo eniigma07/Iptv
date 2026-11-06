@@ -28,8 +28,20 @@ def center(b):
     a = list(map(int, re.findall(r"\d+", b)))
     return (a[0] + a[2]) // 2, (a[1] + a[3]) // 2
 
+def dismiss_system(root):
+    for n in nodes(root):
+        t = n.get("text") or ""
+        if t in ("Wait", "Czekaj", "Close app"):
+            x, y = center(n.get("bounds"))
+            sh(f"adb shell input tap {x} {y}")
+            time.sleep(1)
+            return True
+    return False
+
 def find(text, exact=False):
     root = dump()
+    if dismiss_system(root):
+        root = dump()
     for n in nodes(root):
         for attr in ("text", "content-desc"):
             v = n.get(attr) or ""
@@ -75,5 +87,6 @@ def text_in(s):
     sh(f"adb shell input text '{s}'"); time.sleep(0.8)
 
 def shot(name):
+    dismiss_system(dump())
     sh(f"adb exec-out screencap -p > {OUT}/{name}.png")
     print(f"zrzut {name}")
