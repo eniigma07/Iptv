@@ -1,0 +1,4 @@
+--------- beginning of main
+11-06 08:42:30.276  6314  6335 I Artykulacja: słownik: 2989 ms
+11-06 08:42:32.439  6314  6335 I Artykulacja: Kokoro: 2163 ms
+11-06 08:42:33.046  6314  6335 I Artykulacja: rozpoznawanie: 607 ms

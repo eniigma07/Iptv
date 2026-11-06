@@ -1,0 +1,80 @@
+11-06 08:42:26.619   549  2121 V SplashScreenExceptionList: SplashScreen checking exception for package com.artykulacja.app (target sdk:35) -> false
+11-06 08:42:30.788  5505  6018 W GLSUser : [AppCertManager] Exception while requesting key: 
+11-06 08:42:30.788  5505  6018 W GLSUser : java.util.concurrent.ExecutionException: avvw: Parse Proto Exception.
+11-06 08:42:30.788  5505  6018 W GLSUser : Caused by: avvw: Parse Proto Exception.
+11-06 08:42:34.830  6391  6391 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:42:34.834  6391  6391 I AndroidRuntime: Using default boot image
+11-06 08:42:34.834  6391  6391 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:42:35.056  6391  6391 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:42:36.148  6391  6391 D AndroidRuntime: Shutting down VM
+11-06 08:42:37.333  6418  6418 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:42:37.336  6418  6418 I AndroidRuntime: Using default boot image
+11-06 08:42:37.336  6418  6418 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:42:37.468  6418  6418 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:42:38.537  6418  6418 D AndroidRuntime: Shutting down VM
+11-06 08:42:41.215  5505  5543 W TapAndPay: java.lang.NullPointerException: NfcAdapter is null
+11-06 08:42:44.250  6482  6482 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:42:44.253  6482  6482 I AndroidRuntime: Using default boot image
+11-06 08:42:44.253  6482  6482 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:42:44.359  6482  6482 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:42:45.453  6482  6482 D AndroidRuntime: Shutting down VM
+11-06 08:42:46.595  6506  6506 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:42:46.598  6506  6506 I AndroidRuntime: Using default boot image
+11-06 08:42:46.598  6506  6506 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:42:46.717  6506  6506 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:42:47.780  6506  6506 D AndroidRuntime: Shutting down VM
+11-06 08:42:49.365  5505  6558 W NetworkScheduler: java.lang.IllegalArgumentException: Only the following extra parameter types are supported: Integer, Long, Double, String, Boolean, and nested Bundles with the same restrictions.
+11-06 08:42:49.385  5557  6532 W PeoplePU: java.lang.IllegalArgumentException: Unknown component: ComponentInfo{com.google.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ContactsSyncAdapterService}
+11-06 08:42:49.385  5557  6532 W PeoplePU: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3061)
+11-06 08:42:49.385  5557  6532 W PeoplePU: 	at android.os.Parcel.createException(Parcel.java:3041)
+11-06 08:42:49.385  5557  6532 W PeoplePU: 	at android.os.Parcel.readException(Parcel.java:3024)
+11-06 08:42:49.385  5557  6532 W PeoplePU: 	at android.os.Parcel.readException(Parcel.java:2966)
+11-06 08:42:49.385  5557  6532 W PeoplePU: Caused by: android.os.RemoteException: Remote stack trace:
+11-06 08:42:49.391  5557  6532 W PeoplePU: java.lang.IllegalArgumentException: Unknown component: ComponentInfo{com.google.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ContactsSyncAdapterService}
+11-06 08:42:49.391  5557  6532 W PeoplePU: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3061)
+11-06 08:42:49.391  5557  6532 W PeoplePU: 	at android.os.Parcel.createException(Parcel.java:3041)
+11-06 08:42:49.391  5557  6532 W PeoplePU: 	at android.os.Parcel.readException(Parcel.java:3024)
+11-06 08:42:49.391  5557  6532 W PeoplePU: 	at android.os.Parcel.readException(Parcel.java:2966)
+11-06 08:42:49.391  5557  6532 W PeoplePU: java.lang.IllegalArgumentException: Unknown component: ComponentInfo{com.google.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ProxyGalProvider}
+11-06 08:42:49.391  5557  6532 W PeoplePU: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3061)
+11-06 08:42:49.391  5557  6532 W PeoplePU: 	at android.os.Parcel.createException(Parcel.java:3041)
+11-06 08:42:49.391  5557  6532 W PeoplePU: 	at android.os.Parcel.readException(Parcel.java:3024)
+11-06 08:42:49.391  5557  6532 W PeoplePU: 	at android.os.Parcel.readException(Parcel.java:2966)
+11-06 08:42:49.469  5557  6048 W GmsPipelineLogger: java.lang.NullPointerException
+11-06 08:42:49.558  5505  6543 I SemanticLocation: java.io.FileNotFoundException: /data/user/0/com.google.android.gms/files/model_bundle_metadata.pb: open failed: ENOENT (No such file or directory)
+11-06 08:42:49.558  5505  6543 I SemanticLocation: Caused by: android.system.ErrnoException: open failed: ENOENT (No such file or directory)
+11-06 08:42:49.597  5505  6543 I SemanticLocation: java.io.FileNotFoundException: /data/user/0/com.google.android.gms/files/model_bundle_metadata.pb: open failed: ENOENT (No such file or directory)
+11-06 08:42:49.597  5505  6543 I SemanticLocation: Caused by: android.system.ErrnoException: open failed: ENOENT (No such file or directory)
+11-06 08:42:50.228  6592  6592 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:42:50.231  6592  6592 I AndroidRuntime: Using default boot image
+11-06 08:42:50.231  6592  6592 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:42:50.334  6592  6592 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:42:51.415  6592  6592 D AndroidRuntime: Shutting down VM
+11-06 08:42:55.313  6619  6619 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:42:55.316  6619  6619 I AndroidRuntime: Using default boot image
+11-06 08:42:55.316  6619  6619 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:42:55.385  6619  6619 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:42:56.445  6619  6619 D AndroidRuntime: Shutting down VM
+11-06 08:42:57.584  6644  6644 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:42:57.587  6644  6644 I AndroidRuntime: Using default boot image
+11-06 08:42:57.587  6644  6644 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:42:57.713  6644  6644 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:42:58.803  6644  6644 D AndroidRuntime: Shutting down VM
+11-06 08:43:04.461  1931  2808 E d       : RuntimeException while executing runnable cb{com.google.apps.tiktok.tracing.ej@3229052} with executor MoreExecutors.directExecutor()
+11-06 08:43:04.461  1931  2808 E d       : java.lang.NullPointerException: Attempt to read from field 'java.lang.String com.google.android.libraries.mdi.download.ae.b' on a null object reference in method 'void com.google.android.libraries.mdi.download.h.bq.gH(java.lang.Object)'
+11-06 08:43:04.483  1931  2808 E d       : RuntimeException while executing runnable cb{com.google.apps.tiktok.tracing.ej@7f6ca77} with executor MoreExecutors.directExecutor()
+11-06 08:43:04.483  1931  2808 E d       : java.lang.NullPointerException: Attempt to read from field 'java.lang.String com.google.android.libraries.mdi.download.ae.b' on a null object reference in method 'void com.google.android.libraries.mdi.download.h.bq.gH(java.lang.Object)'
+11-06 08:43:11.261  6690  6690 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:43:11.265  6690  6690 I AndroidRuntime: Using default boot image
+11-06 08:43:11.265  6690  6690 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:43:11.334  6690  6690 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:43:12.418  6690  6690 D AndroidRuntime: Shutting down VM
+11-06 08:43:13.549  6714  6714 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:43:13.552  6714  6714 I AndroidRuntime: Using default boot image
+11-06 08:43:13.552  6714  6714 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:43:13.659  6714  6714 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+11-06 08:43:14.756  6714  6714 D AndroidRuntime: Shutting down VM
+11-06 08:43:19.184  6741  6741 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-06 08:43:19.188  6741  6741 I AndroidRuntime: Using default boot image
+11-06 08:43:19.188  6741  6741 I AndroidRuntime: Leaving lock profiling enabled
+11-06 08:43:19.258  6741  6741 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
