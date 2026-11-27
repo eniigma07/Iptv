@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay30
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.SkipNext
@@ -768,7 +770,7 @@ class PlayerActivity : ComponentActivity() {
                         if (item.isLive) {
                             if (items.size > 1) TvBarButton(Icons.Filled.SkipPrevious, "Poprz. kanał") { zap(-1) }
                         } else {
-                            TvBarButton(androidx.compose.material.icons.Icons.Filled.Replay10, "−10 s") { seekBy(-10_000) }
+                            TvBarButton(Icons.Filled.Replay10, "−10 s") { seekBy(-10_000) }
                         }
                         TvBarButton(
                             if (player.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -793,7 +795,7 @@ class PlayerActivity : ComponentActivity() {
                                 else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                             }
                         }
-                        TvBarButton(androidx.compose.material.icons.Icons.Filled.MoreVert, "Opcje") { tvMenu = true }
+                        TvBarButton(Icons.Filled.MoreVert, "Opcje") { tvMenu = true }
                     }
                 } else {
                     Text(
