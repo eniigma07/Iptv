@@ -13,8 +13,6 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
-import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -25,25 +23,6 @@ import com.mojatv.app.data.PlayItem
 @androidx.annotation.OptIn(UnstableApi::class)
 object PlayerFactory {
 
-    /**
-     * Fire TV: obraz tylko z dekodera sprzętowego.
-     * Słabsze Fire TV często „deklarują”, że nie obsłużą strumienia IPTV (np. 1080i/50 kl/s,
-     * wysoki poziom H.264), więc odtwarzacz wybierał dekoder programowy — za wolny na tym procesorze,
-     * stąd obraz w zwolnionym tempie albo stop-klatka przy normalnym dźwięku.
-     * Gdy sprzętowy naprawdę nie da rady, odtwarzacz sam przełącza się na programowy.
-     */
-    @Volatile var hardwareVideoOnly = false
-
-    private val codecSelector = MediaCodecSelector { mimeType, requiresSecure, requiresTunneling ->
-        val all = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecure, requiresTunneling)
-        if (hardwareVideoOnly && MimeTypes.isVideo(mimeType)) {
-            val hw = all.filter { !it.softwareOnly }
-            if (hw.isNotEmpty()) hw else all
-        } else {
-            all
-        }
-    }
-
     fun create(
         context: Context,
         audioOnly: Boolean = false,
@@ -51,6 +30,8 @@ object PlayerFactory {
         tunneling: Boolean = false,
         /** Domyślny (zgodny) sposób dzielenia strumienia TS na klatki. */
         tsCompat: Boolean = false,
+        /** Fire TV: własny wybór dekodera (przeplot → programowy, reszta → sprzętowy). */
+        tvDecoders: Boolean = false,
     ): ExoPlayer {
         val http = OkHttpDataSource.Factory(Http.client)
         val dataSource = DefaultDataSource.Factory(context, http)
@@ -63,9 +44,8 @@ object PlayerFactory {
             )
             .setConstantBitrateSeekingEnabled(true)
 
-        val renderers = DefaultRenderersFactory(context)
+        val renderers = (if (tvDecoders) TvRenderersFactory(context) else DefaultRenderersFactory(context))
             .setEnableDecoderFallback(true)
-            .setMediaCodecSelector(codecSelector)
 
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(

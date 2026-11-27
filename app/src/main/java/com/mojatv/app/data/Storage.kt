@@ -70,8 +70,13 @@ class Storage(context: Context) {
 
     /** Fire TV: sprzętowa synchronizacja obrazu z dźwiękiem (tunelowanie). */
     var tvTunneling: Boolean
-        get() = prefs.getBoolean("tvTunneling", true)
+        get() = prefs.getBoolean("tvTunneling", false)
         set(v) = prefs.edit().putBoolean("tvTunneling", v).apply()
+
+    /** Fire TV: kanały z przeplotem (1080i/576i) przez dekoder programowy — obejście błędu Fire TV Stick 4K. */
+    var tvSwInterlaced: Boolean
+        get() = prefs.getBoolean("tvSwInterlaced", true)
+        set(v) = prefs.edit().putBoolean("tvSwInterlaced", v).apply()
 
     /** Zgodny tryb odczytu strumieni TS (pomaga na kanałach z przeplotem / zacinających się). */
     var tsCompat: Boolean

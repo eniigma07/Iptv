@@ -151,11 +151,12 @@ class PlayerActivity : ComponentActivity() {
         hideSystemBars()
 
         val st = repo.storage
-        PlayerFactory.hardwareVideoOnly = isTv
+        VideoQuirks.softwareForInterlaced = st.tvSwInterlaced
         player = PlayerFactory.create(
             this,
             tunneling = isTv && st.tvTunneling,
             tsCompat = st.tsCompat,
+            tvDecoders = isTv,
         )
         // zapamiętany język dźwięku i napisów
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().apply {
@@ -215,8 +216,6 @@ class PlayerActivity : ComponentActivity() {
         val item = items.getOrNull(i) ?: return
         index = i
         droppedFrames = 0
-        videoDecoder = null
-        if (isTv) PlayerFactory.hardwareVideoOnly = true
         showTvInfo()
         error = null
         triedHls = false
@@ -258,21 +257,7 @@ class PlayerActivity : ComponentActivity() {
                 e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
                 e.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED
 
-            val decoderError = e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-                e.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
-                e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-                e.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
-                e.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES
-
             when {
-                // Fire TV: sprzętowy dekoder nie dał rady — ten kanał/film z dekoderem programowym
-                decoderError && PlayerFactory.hardwareVideoOnly -> {
-                    PlayerFactory.hardwareVideoOnly = false
-                    val pos = if (item.isLive) 0L else player.currentPosition
-                    player.setMediaItem(PlayerFactory.mediaItem(item, forceHls = triedHls), pos)
-                    player.prepare()
-                    player.playWhenReady = true
-                }
                 // Strumień bez rozszerzenia .m3u8, który okazuje się być HLS
                 parsingError && !triedHls && !PlayerFactory.isHls(item.url) && !PlayerFactory.isLocal(item.url) -> {
                     triedHls = true
@@ -876,6 +861,8 @@ class PlayerActivity : ComponentActivity() {
             if (v != null) add("Obraz: ${v.width}×${v.height}" + (if (v.frameRate > 0) " · ${"%.2f".format(v.frameRate)} kl/s" else "") +
                 (if (v.bitrate > 0) " · ${v.bitrate / 1000} kb/s" else ""))
             add("Dekoder: " + (videoDecoder ?: "—"))
+            VideoQuirks.isInterlacedH264(v)?.let { add("Przeplot: " + if (it) "tak (1080i/576i)" else "nie") }
+            player.videoDecoderCounters?.let { add("Wyświetlone klatki: ${it.renderedOutputBufferCount}") }
             add("Zgubione klatki: $droppedFrames")
             add("Audio: " + (a?.let { "${it.sampleMimeType ?: "?"} ${it.channelCount} kan. ${it.sampleRate} Hz" } ?: "brak"))
             add("Bufor: ${(player.totalBufferedDuration / 1000)} s")

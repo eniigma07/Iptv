@@ -79,6 +79,7 @@ fun SettingsScreen(nav: NavController, onSignOut: () -> Unit) {
     var tsCompat by remember { mutableStateOf(storage.tsCompat) }
     var tvTunneling by remember { mutableStateOf(storage.tvTunneling) }
     var tvUseVlc by remember { mutableStateOf(storage.tvUseVlc) }
+    var tvSwInterlaced by remember { mutableStateOf(storage.tvSwInterlaced) }
     var hideAdult by remember { mutableStateOf(storage.hideAdult) }
     var userAgent by remember { mutableStateOf(storage.userAgent) }
     var epgUrl by remember { mutableStateOf(source?.epgUrl ?: "") }
@@ -228,6 +229,10 @@ fun SettingsScreen(nav: NavController, onSignOut: () -> Unit) {
                 storage.tsCompat = it
             }
             if (isTv) {
+                SwitchLine("Kanały z przeplotem (1080i) przez procesor — naprawia stop-klatkę na Fire TV", tvSwInterlaced) {
+                    tvSwInterlaced = it
+                    storage.tvSwInterlaced = it
+                }
                 SwitchLine("Sprzętowa synchronizacja obrazu i dźwięku (Fire TV)", tvTunneling) {
                     tvTunneling = it
                     storage.tvTunneling = it
