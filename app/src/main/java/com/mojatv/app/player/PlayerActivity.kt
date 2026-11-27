@@ -127,6 +127,12 @@ class PlayerActivity : ComponentActivity() {
     private var playerView: PlayerView? = null
     private var tvMenu by mutableStateOf(false)
 
+    // ---- diagnostyka obrazu (Menu → Informacje o obrazie) ----
+    private var showStats by mutableStateOf(false)
+    private var videoDecoder by mutableStateOf<String?>(null)
+    private var droppedFrames by mutableIntStateOf(0)
+    private var statsTick by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -134,6 +140,24 @@ class PlayerActivity : ComponentActivity() {
 
         player = PlayerFactory.create(this)
         player.addListener(listener)
+        player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onVideoDecoderInitialized(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                videoDecoder = decoderName
+            }
+
+            override fun onDroppedVideoFrames(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                droppedFrames: Int,
+                elapsedMs: Long,
+            ) {
+                this@PlayerActivity.droppedFrames += droppedFrames
+            }
+        })
 
         setContent { MojaTvTheme { com.mojatv.app.ui.TvFocusProvider(isTv) { PlayerScreen() } } }
 
@@ -159,6 +183,8 @@ class PlayerActivity : ComponentActivity() {
     private fun play(i: Int, startAt: Long = -1) {
         val item = items.getOrNull(i) ?: return
         index = i
+        droppedFrames = 0
+        videoDecoder = null
         error = null
         triedHls = false
         liveRetries = 0
@@ -543,6 +569,7 @@ class PlayerActivity : ComponentActivity() {
 
             if (castDialog) CastDialog()
             if (tvMenu && item != null) TvMenu(item)
+            if (showStats && !inPip) StatsOverlay(Modifier.align(Alignment.BottomStart))
             if (recordDialog && item != null) {
                 com.mojatv.app.ui.ChannelGuide(item, onDismiss = { recordDialog = false }, onStartedNow = {
                     // nagrywanie od razu tego, co się ogląda = drugie połączenie z serwerem
@@ -582,6 +609,33 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** Kodek, rozdzielczość, dekoder i zgubione klatki — pomaga znaleźć przyczynę zacinania obrazu. */
+    @Composable
+    private fun StatsOverlay(modifier: Modifier) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(1000)
+                statsTick++
+            }
+        }
+        @Suppress("UNUSED_VARIABLE") val tick = statsTick
+        val v = player.videoFormat
+        val a = player.audioFormat
+        val lines = buildList {
+            add("Wideo: " + (v?.let { "${it.sampleMimeType ?: "?"} ${it.codecs ?: ""}".trim() } ?: "brak"))
+            if (v != null) add("Obraz: ${v.width}×${v.height}" + (if (v.frameRate > 0) " · ${"%.2f".format(v.frameRate)} kl/s" else "") +
+                (if (v.bitrate > 0) " · ${v.bitrate / 1000} kb/s" else ""))
+            add("Dekoder: " + (videoDecoder ?: "—"))
+            add("Zgubione klatki: $droppedFrames")
+            add("Audio: " + (a?.let { "${it.sampleMimeType ?: "?"} ${it.channelCount} kan. ${it.sampleRate} Hz" } ?: "brak"))
+            add("Bufor: ${(player.totalBufferedDuration / 1000)} s")
+            add("Urządzenie: ${android.os.Build.MODEL} · Android ${android.os.Build.VERSION.RELEASE}")
+        }
+        Column(modifier.padding(16.dp).background(Color(0xCC000000)).padding(12.dp)) {
+            lines.forEach { Text(it, color = Color.White, fontSize = 13.sp) }
+        }
+    }
+
     /** Menu opcji na telewizorze (przycisk ≡ na pilocie). */
     @Composable
     private fun TvMenu(item: PlayItem) {
@@ -617,6 +671,9 @@ class PlayerActivity : ComponentActivity() {
                     }
                     TextButton(onClick = { tvMenu = false; openExternal(item) }, modifier = Modifier.fillMaxWidth()) {
                         Text("Otwórz w zewnętrznym odtwarzaczu (VLC)")
+                    }
+                    TextButton(onClick = { tvMenu = false; showStats = !showStats }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (showStats) "Ukryj informacje o obrazie" else "Informacje o obrazie (diagnostyka)")
                     }
                     TextButton(onClick = { tvMenu = false; finish() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Zamknij odtwarzacz")
