@@ -151,6 +151,7 @@ class PlayerActivity : ComponentActivity() {
         hideSystemBars()
 
         val st = repo.storage
+        PlayerFactory.hardwareVideoOnly = isTv
         player = PlayerFactory.create(
             this,
             tunneling = isTv && st.tvTunneling,
@@ -215,6 +216,7 @@ class PlayerActivity : ComponentActivity() {
         index = i
         droppedFrames = 0
         videoDecoder = null
+        if (isTv) PlayerFactory.hardwareVideoOnly = true
         showTvInfo()
         error = null
         triedHls = false
@@ -256,7 +258,21 @@ class PlayerActivity : ComponentActivity() {
                 e.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
                 e.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED
 
+            val decoderError = e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                e.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+                e.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+                e.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
+                e.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES
+
             when {
+                // Fire TV: sprzętowy dekoder nie dał rady — ten kanał/film z dekoderem programowym
+                decoderError && PlayerFactory.hardwareVideoOnly -> {
+                    PlayerFactory.hardwareVideoOnly = false
+                    val pos = if (item.isLive) 0L else player.currentPosition
+                    player.setMediaItem(PlayerFactory.mediaItem(item, forceHls = triedHls), pos)
+                    player.prepare()
+                    player.playWhenReady = true
+                }
                 // Strumień bez rozszerzenia .m3u8, który okazuje się być HLS
                 parsingError && !triedHls && !PlayerFactory.isHls(item.url) && !PlayerFactory.isLocal(item.url) -> {
                     triedHls = true
