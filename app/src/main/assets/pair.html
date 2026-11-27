@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MojaTV — logowanie na telewizorze</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, Roboto, "Segoe UI", sans-serif; background: #0E1116; color: #ECEFF4; }
+  main { max-width: 480px; margin: 0 auto; padding: 24px 18px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 span { color: #E5484D; }
+  p.lead { color: #9BA3AF; margin: 0 0 20px; font-size: 14px; }
+  .tabs { display: flex; background: #1F242D; border-radius: 10px; padding: 4px; margin-bottom: 16px; }
+  .tabs button { flex: 1; border: 0; background: transparent; color: #9BA3AF; padding: 10px; font-size: 15px; border-radius: 8px; }
+  .tabs button.on { background: #E5484D; color: #fff; font-weight: 600; }
+  label { display: block; font-size: 13px; color: #9BA3AF; margin: 12px 0 4px; }
+  input { width: 100%; padding: 12px; font-size: 16px; border-radius: 8px; border: 1px solid #3A414D; background: #161A21; color: #ECEFF4; }
+  input:focus { outline: 2px solid #E5484D; border-color: transparent; }
+  .hint { font-size: 12px; color: #9BA3AF; margin-top: 4px; }
+  .pin { letter-spacing: 8px; font-size: 22px; text-align: center; }
+  button.go { width: 100%; margin-top: 22px; padding: 14px; font-size: 17px; font-weight: 600; border: 0; border-radius: 10px; background: #E5484D; color: #fff; }
+  button.go:disabled { opacity: .5; }
+  .msg { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 14px; display: none; }
+  .msg.err { display: block; background: #3A1F22; color: #FFDAD9; }
+  .msg.info { display: block; background: #1F242D; color: #ECEFF4; }
+  .msg.ok { display: block; background: #173B2A; color: #C9F5DC; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Moja<span>TV</span> na telewizorze</h1>
+  <p class="lead">Wpisz dane tutaj na telefonie — telewizor zaloguje się sam.</p>
+
+  <div class="tabs">
+    <button type="button" id="tX" class="on">Xtream Codes</button>
+    <button type="button" id="tM">Playlista M3U</button>
+  </div>
+
+  <form id="f" autocomplete="off">
+    <div id="xtream">
+      <label for="server">Adres serwera</label>
+      <input id="server" type="url" inputmode="url" placeholder="http://serwer.com:8080" autocapitalize="off">
+      <div class="hint">Możesz też wkleić cały link get.php?username=…&amp;password=…</div>
+      <label for="username">Nazwa użytkownika</label>
+      <input id="username" autocapitalize="off" autocorrect="off">
+      <label for="password">Hasło</label>
+      <input id="password" type="password" autocapitalize="off" autocorrect="off">
+    </div>
+    <div id="m3u" class="hide">
+      <label for="m3uUrl">Link do playlisty M3U</label>
+      <input id="m3uUrl" type="url" inputmode="url" placeholder="http://…/playlist.m3u" autocapitalize="off">
+    </div>
+
+    <label for="epgUrl">Link do EPG (XMLTV) — opcjonalnie</label>
+    <input id="epgUrl" type="url" inputmode="url" autocapitalize="off">
+
+    <label for="name">Nazwa profilu — opcjonalnie</label>
+    <input id="name" placeholder="np. Dom, Arabskie, Sport">
+
+    <label for="pin">Kod PIN z ekranu telewizora</label>
+    <input id="pin" class="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4">
+
+    <button class="go" id="go" type="submit">Zaloguj telewizor</button>
+  </form>
+  <div id="msg" class="msg"></div>
+</main>
+<script>
+(function () {
+  var type = "xtream";
+  var el = function (id) { return document.getElementById(id); };
+  var params = new URLSearchParams(location.search);
+  if (params.get("pin")) el("pin").value = params.get("pin");
+
+  function setTab(t) {
+    type = t;
+    el("tX").className = t === "xtream" ? "on" : "";
+    el("tM").className = t === "m3u" ? "on" : "";
+    el("xtream").className = t === "xtream" ? "" : "hide";
+    el("m3u").className = t === "m3u" ? "" : "hide";
+  }
+  el("tX").onclick = function () { setTab("xtream"); };
+  el("tM").onclick = function () { setTab("m3u"); };
+
+  function show(kind, text) {
+    var m = el("msg");
+    m.className = "msg " + kind;
+    m.textContent = text;
+  }
+
+  function poll() {
+    fetch("/api/status", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (s) {
+      if (s.state === "loading") { show("info", s.message || "Wczytywanie…"); setTimeout(poll, 1500); }
+      else if (s.state === "done") { show("ok", s.message || "Gotowe!"); el("go").disabled = false; }
+      else if (s.state === "error") { show("err", s.message || "Nie udało się zalogować."); el("go").disabled = false; }
+      else { setTimeout(poll, 1500); }
+    }).catch(function () { setTimeout(poll, 3000); });
+  }
+
+  el("f").onsubmit = function (e) {
+    e.preventDefault();
+    var body = {
+      type: type,
+      server: el("server").value,
+      username: el("username").value,
+      password: el("password").value,
+      m3uUrl: el("m3uUrl").value,
+      epgUrl: el("epgUrl").value,
+      name: el("name").value,
+      pin: el("pin").value
+    };
+    el("go").disabled = true;
+    show("info", "Wysyłam na telewizor…");
+    fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) { poll(); }
+        else { show("err", res.error || "Błąd."); el("go").disabled = false; }
+      })
+      .catch(function () {
+        show("err", "Brak połączenia z telewizorem. Telefon musi być w tej samej sieci Wi‑Fi, a na telewizorze otwarty ekran logowania.");
+        el("go").disabled = false;
+      });
+  };
+})();
+</script>
+</body>
+</html>

@@ -17,6 +17,52 @@ class Storage(context: Context) {
             prefs.edit().putString("source", value?.toJson()).apply()
         }
 
+    // ---- Zapisane profile ----
+    private val _profiles = MutableStateFlow(loadProfiles())
+    val profiles: StateFlow<List<SavedProfile>> = _profiles
+
+    /** Dodaje profil albo aktualizuje istniejący (ten sam serwer i login / ten sam link). */
+    fun upsertProfile(cfg: SourceConfig, name: String?) {
+        val key = SavedProfile.profileKey(cfg)
+        val old = _profiles.value.firstOrNull { it.key == key }
+        val finalName = name?.trim()?.takeIf { it.isNotEmpty() } ?: old?.name ?: SavedProfile.defaultName(cfg)
+        val list = _profiles.value.filterNot { it.key == key }.toMutableList()
+        list.add(0, SavedProfile(finalName, cfg))
+        _profiles.value = list
+        persistProfiles(list)
+    }
+
+    fun removeProfile(key: String) {
+        val list = _profiles.value.filterNot { it.key == key }
+        _profiles.value = list
+        persistProfiles(list)
+    }
+
+    private fun loadProfiles(): List<SavedProfile> {
+        val list = try {
+            val arr = JSONArray(prefs.getString("profiles", "[]"))
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val cfg = SourceConfig.fromJson(o.optString("config")) ?: return@mapNotNull null
+                SavedProfile(o.optString("name").ifBlank { SavedProfile.defaultName(cfg) }, cfg)
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        // starsze wersje miały tylko jedno źródło — dopisujemy je jako pierwszy profil
+        val current = source
+        if (current != null && list.none { it.key == SavedProfile.profileKey(current) }) {
+            return listOf(SavedProfile(SavedProfile.defaultName(current), current)) + list
+        }
+        return list
+    }
+
+    private fun persistProfiles(list: List<SavedProfile>) {
+        val arr = JSONArray()
+        list.forEach { arr.put(JSONObject().put("name", it.name).put("config", it.config.toJson())) }
+        prefs.edit().putString("profiles", arr.toString()).apply()
+    }
+
     // ---- Ustawienia ----
     var liveFormat: String
         get() = prefs.getString("liveFormat", "ts") ?: "ts"
@@ -134,6 +180,7 @@ class Storage(context: Context) {
 
     fun clearAll() {
         prefs.edit().clear().apply()
+        _profiles.value = emptyList()
         _favorites.value = emptyList()
         _recent.value = emptyList()
         _progress.value = emptyMap()

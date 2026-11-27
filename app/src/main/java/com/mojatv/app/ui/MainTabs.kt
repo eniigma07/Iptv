@@ -29,6 +29,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -70,6 +72,7 @@ private val tabs = listOf(
 fun MainTabs(nav: NavController) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val epgStatus by MojaTvApp.repo.epgStatus.collectAsState()
+    val isTv = LocalIsTv.current
 
     Scaffold(
         containerColor = Background,
@@ -96,7 +99,8 @@ fun MainTabs(nav: NavController) {
         bottomBar = {
             Column {
                 RadioMiniPlayer()
-                NavigationBar(containerColor = SurfaceHigh) {
+                // na telewizorze menu jest z boku (wygodniej pilotem)
+                if (!isTv) NavigationBar(containerColor = SurfaceHigh) {
                     tabs.forEachIndexed { i, t ->
                         NavigationBarItem(
                             selected = tab == i,
@@ -109,15 +113,29 @@ fun MainTabs(nav: NavController) {
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            val openSettings = { nav.navigate(Routes.SETTINGS) }
-            when (tab) {
-                0 -> HomeScreen(nav, onOpenTab = { tab = it })
-                1 -> CatalogGate(openSettings) { LiveScreen(it) }
-                2 -> CatalogGate(openSettings) { MoviesScreen(it, nav) }
-                3 -> CatalogGate(openSettings) { SeriesScreen(it, nav) }
-                4 -> CatalogGate(openSettings) { ShowScreen(it, nav) }
-                5 -> RadioScreen()
+        Row(Modifier.fillMaxSize().padding(padding)) {
+            if (isTv) {
+                NavigationRail(containerColor = SurfaceHigh) {
+                    tabs.forEachIndexed { i, t ->
+                        NavigationRailItem(
+                            selected = tab == i,
+                            onClick = { tab = i },
+                            icon = { Icon(t.icon, t.title) },
+                            label = { Text(t.title, fontSize = 11.sp, maxLines = 1) },
+                        )
+                    }
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxSize()) {
+                val openSettings = { nav.navigate(Routes.SETTINGS) }
+                when (tab) {
+                    0 -> HomeScreen(nav, onOpenTab = { tab = it })
+                    1 -> CatalogGate(openSettings) { LiveScreen(it) }
+                    2 -> CatalogGate(openSettings) { MoviesScreen(it, nav) }
+                    3 -> CatalogGate(openSettings) { SeriesScreen(it, nav) }
+                    4 -> CatalogGate(openSettings) { ShowScreen(it, nav) }
+                    5 -> RadioScreen()
+                }
             }
         }
     }

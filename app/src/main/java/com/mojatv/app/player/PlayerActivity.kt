@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Rational
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -121,6 +122,11 @@ class PlayerActivity : ComponentActivity() {
 
     private val current: PlayItem? get() = items.getOrNull(index)
 
+    // ---- Fire TV / Android TV: sterowanie pilotem ----
+    private val isTv by lazy { com.mojatv.app.ui.Device.isTv(this) }
+    private var playerView: PlayerView? = null
+    private var tvMenu by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -129,7 +135,7 @@ class PlayerActivity : ComponentActivity() {
         player = PlayerFactory.create(this)
         player.addListener(listener)
 
-        setContent { MojaTvTheme { PlayerScreen() } }
+        setContent { MojaTvTheme { com.mojatv.app.ui.TvFocusProvider(isTv) { PlayerScreen() } } }
 
         startFromQueue()
         startProgressSaver()
@@ -353,7 +359,95 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (player.isPlaying) enterPip()
+        // na telewizorze przycisk Home ma zamknąć obraz, a nie zostawić okienko
+        if (player.isPlaying && !isTv) enterPip()
+    }
+
+    // ---------------- Pilot (Fire TV) ----------------
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isTv && handleTvKey(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * Pilot na Fire TV:
+     *  - kanały na żywo: góra/dół = poprzedni/następny kanał (także przyciski CH+/CH−),
+     *  - filmy i seriale: lewo/prawo = przewijanie −10 s / +30 s,
+     *  - OK = pokaż przyciski odtwarzacza, Menu (≡) = opcje, Wstecz = schowaj przyciski / zamknij.
+     */
+    private fun handleTvKey(e: KeyEvent): Boolean {
+        if (castDialog || recordDialog || tvMenu || castTarget != null) return false
+        val item = current ?: return false
+        val down = e.action == KeyEvent.ACTION_DOWN
+        when (e.keyCode) {
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE -> {
+                if (down && e.repeatCount == 0) {
+                    if (e.keyCode == KeyEvent.KEYCODE_GUIDE && item.kind == com.mojatv.app.data.ContentKind.LIVE) recordDialog = true
+                    else tvMenu = true
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {
+                if (down) zap(+1)
+                return true
+            }
+            KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
+                if (down) zap(-1)
+                return true
+            }
+        }
+        if (error != null) {
+            if (e.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || e.keyCode == KeyEvent.KEYCODE_ENTER) {
+                if (down) play(index)
+                return true
+            }
+            return false
+        }
+        val pv = playerView ?: return false
+        if (controlsVisible) {
+            if (e.keyCode == KeyEvent.KEYCODE_BACK) {
+                if (down) pv.hideController()
+                return true
+            }
+            // przyciski odtwarzacza są widoczne — strzałki chodzą po nich
+            return false
+        }
+        when (e.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> if (item.isLive && items.size > 1) {
+                if (down) zap(-1)
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_DOWN -> if (item.isLive && items.size > 1) {
+                if (down) zap(+1)
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> if (!item.isLive) {
+                if (down) seekBy(-10_000)
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> if (!item.isLive) {
+                if (down) seekBy(30_000)
+                return true
+            }
+        }
+        // OK, przyciski multimediów (play/pauza, przewijanie) — obsługuje odtwarzacz
+        return pv.dispatchKeyEvent(e)
+    }
+
+    private fun zap(delta: Int) {
+        val item = current ?: return
+        val n = index + delta
+        if (n !in items.indices) return
+        saveProgress()
+        play(n, if (item.isLive) -1L else 0L)
+    }
+
+    private fun seekBy(deltaMs: Long) {
+        val dur = player.duration
+        var target = player.currentPosition + deltaMs
+        if (dur > 0) target = target.coerceAtMost(dur - 1000)
+        player.seekTo(target.coerceAtLeast(0))
     }
 
     private fun enterPip() {
@@ -413,8 +507,16 @@ class PlayerActivity : ComponentActivity() {
                         setShowPreviousButton(false)
                         controllerShowTimeoutMs = 4000
                         setControllerVisibilityListener(
-                            PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == View.VISIBLE }
+                            PlayerView.ControllerVisibilityListener { v ->
+                                controlsVisible = v == View.VISIBLE
+                                if (isTv && v == View.VISIBLE) {
+                                    // pilot od razu na przycisku play/pauza
+                                    post { findViewById<View>(androidx.media3.ui.R.id.exo_play_pause)?.requestFocus() }
+                                }
+                            }
                         )
+                        if (isTv) controllerShowTimeoutMs = 5000
+                        playerView = this
                     }
                 },
                 update = { view ->
@@ -428,7 +530,7 @@ class PlayerActivity : ComponentActivity() {
                 CastOverlay(item, castTarget!!)
             } else if (item != null && controlsVisible && !inPip) {
                 TopBar(item)
-                if (items.size > 1) {
+                if (items.size > 1 && !isTv) {
                     ZapButton(Icons.Filled.SkipPrevious, Modifier.align(Alignment.CenterStart), index > 0) {
                         saveProgress(); play(index - 1, if (item.isLive) -1L else 0L)
                     }
@@ -439,6 +541,7 @@ class PlayerActivity : ComponentActivity() {
             }
 
             if (castDialog) CastDialog()
+            if (tvMenu && item != null) TvMenu(item)
             if (recordDialog && item != null) {
                 com.mojatv.app.ui.ChannelGuide(item, onDismiss = { recordDialog = false }, onStartedNow = {
                     // nagrywanie od razu tego, co się ogląda = drugie połączenie z serwerem
@@ -476,6 +579,51 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Menu opcji na telewizorze (przycisk ≡ na pilocie). */
+    @Composable
+    private fun TvMenu(item: PlayItem) {
+        val ratioName = when (resizeMode) {
+            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "powiększony"
+            AspectRatioFrameLayout.RESIZE_MODE_FILL -> "rozciągnięty"
+            else -> "dopasowany"
+        }
+        AlertDialog(
+            onDismissRequest = { tvMenu = false },
+            title = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column {
+                    TextButton(onClick = {
+                        resizeMode = when (resizeMode) {
+                            AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Obraz: $ratioName (zmień)") }
+                    if (item.kind == com.mojatv.app.data.ContentKind.LIVE) {
+                        TextButton(onClick = { tvMenu = false; recordDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Program TV i nagrywanie")
+                        }
+                    }
+                    if (items.size > 1) {
+                        TextButton(onClick = { tvMenu = false; zap(+1) }, enabled = index < items.lastIndex, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (item.isLive) "Następny kanał" else "Następny")
+                        }
+                        TextButton(onClick = { tvMenu = false; zap(-1) }, enabled = index > 0, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (item.isLive) "Poprzedni kanał" else "Poprzedni")
+                        }
+                    }
+                    TextButton(onClick = { tvMenu = false; openExternal(item) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Otwórz w zewnętrznym odtwarzaczu (VLC)")
+                    }
+                    TextButton(onClick = { tvMenu = false; finish() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Zamknij odtwarzacz")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { tvMenu = false }) { Text("Wróć") } },
+        )
     }
 
     @Composable
@@ -517,6 +665,12 @@ class PlayerActivity : ComponentActivity() {
                     Text(
                         "Następnie ${fmt.hm(nextProgram.start)} ${nextProgram.title}",
                         color = Color(0xFFAAAAAA), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (isTv) {
+                    Text(
+                        if (item.isLive) "Wstecz chowa przyciski · ▲▼ kanały · ≡ opcje" else "Wstecz chowa przyciski · ◀▶ przewijanie · ≡ opcje",
+                        color = Color(0xFF9BA3AF), fontSize = 12.sp,
                     )
                 }
             }

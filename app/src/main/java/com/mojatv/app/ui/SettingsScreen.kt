@@ -16,9 +16,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +54,7 @@ import androidx.navigation.NavController
 import com.mojatv.app.MojaTvApp
 import com.mojatv.app.data.Http
 import com.mojatv.app.data.LoadState
+import com.mojatv.app.data.SavedProfile
 import com.mojatv.app.data.SourceType
 import com.mojatv.app.ui.theme.Accent
 import com.mojatv.app.ui.theme.Background
@@ -57,6 +62,7 @@ import com.mojatv.app.ui.theme.TextSecondary
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,6 +80,28 @@ fun SettingsScreen(nav: NavController, onSignOut: () -> Unit) {
     var userAgent by remember { mutableStateOf(storage.userAgent) }
     var epgUrl by remember { mutableStateOf(source?.epgUrl ?: "") }
     var confirmSignOut by remember { mutableStateOf(false) }
+    val isTv = LocalIsTv.current
+    val profiles by storage.profiles.collectAsState()
+    val scope = rememberCoroutineScope()
+    var switching by remember { mutableStateOf<SavedProfile?>(null) }
+    var switchError by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf<SavedProfile?>(null) }
+
+    fun switchTo(p: SavedProfile) {
+        switching = p
+        switchError = null
+        scope.launch {
+            try {
+                repo.signIn(p.config, p.name)
+                Toast.makeText(context, "Profil: ${p.name}", Toast.LENGTH_SHORT).show()
+                nav.popBackStack()
+            } catch (e: Exception) {
+                switchError = e.message ?: "Nie udało się zalogować."
+            } finally {
+                switching = null
+            }
+        }
+    }
 
     fun reload() {
         repo.load(force = true)
@@ -126,6 +154,43 @@ fun SettingsScreen(nav: NavController, onSignOut: () -> Unit) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { reload() }) { Text("Odśwież playlistę") }
                 OutlinedButton(onClick = { confirmSignOut = true }) { Text("Zmień źródło") }
+            }
+
+            // ---- Profile ----
+            Group("Profile")
+            val currentKey = source?.let { SavedProfile.profileKey(it) }
+            profiles.forEach { p ->
+                val isCurrent = p.key == currentKey
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { if (!isCurrent && switching == null) switchTo(p) }
+                        .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.AccountCircle, null, tint = if (isCurrent) Accent else TextSecondary)
+                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                        Text(p.name, fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal)
+                        Text(
+                            if (isCurrent) "Używany teraz" else "Kliknij, aby przełączyć",
+                            color = TextSecondary, fontSize = 12.sp,
+                        )
+                    }
+                    if (!isCurrent) {
+                        IconButton(onClick = { confirmDelete = p }) {
+                            Icon(Icons.Filled.Delete, "Usuń profil", tint = TextSecondary)
+                        }
+                    }
+                }
+            }
+            switchError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
+            NavLine(if (isTv) "Dodaj profil telefonem (kod QR)" else "Dodaj profil") {
+                nav.navigate(if (isTv) Routes.PAIR else Routes.ADD_PROFILE)
+            }
+            if (!isTv) {
+                NavLine("Wyślij profil na telewizor (Fire TV)") { nav.navigate(Routes.SEND_TO_TV) }
             }
 
             // ---- Odtwarzanie ----
@@ -225,11 +290,40 @@ fun SettingsScreen(nav: NavController, onSignOut: () -> Unit) {
 
             Spacer(Modifier.height(24.dp))
             Text(
-                "MojaTV 1.0 · aplikacja do odtwarzania Twoich własnych playlist",
+                "MojaTV 1.1 · aplikacja do odtwarzania Twoich własnych playlist",
                 color = TextSecondary, fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
         }
+    }
+
+    switching?.let { p ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Przełączam profil") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.padding(end = 16.dp))
+                    Text("${p.name}\nWczytuję kanały, filmy i seriale…")
+                }
+            },
+            confirmButton = {},
+        )
+    }
+
+    confirmDelete?.let { p ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Usunąć profil?") },
+            text = { Text("Profil „${p.name}” zniknie z listy. Możesz go później dodać ponownie.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    storage.removeProfile(p.key)
+                    confirmDelete = null
+                }) { Text("Usuń", color = Accent) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Anuluj") } },
+        )
     }
 
     if (confirmSignOut) {

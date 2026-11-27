@@ -8,6 +8,25 @@ https://github.com/eniigma07/Iptv/releases/latest/download/MojaTV.apk
 
 Każda zmiana w kodzie automatycznie buduje nową wersję pod tym samym linkiem.
 
+## Fire TV (Amazon Fire TV Stick / Cube)
+
+Ta sama aplikacja działa na Fire TV — sterowanie pilotem, menu z boku ekranu.
+
+**Instalacja (raz):**
+1. Na Fire TV: **Ustawienia → My Fire TV → Developer Options** i włącz instalację aplikacji z nieznanych źródeł (dla aplikacji **Downloader**). Jeśli nie widzisz Developer Options: **My Fire TV → About** i kliknij 7 razy nazwę urządzenia.
+2. Zainstaluj z Amazon Appstore darmową aplikację **Downloader**.
+3. W Downloaderze wpisz link: `https://github.com/eniigma07/Iptv/releases/latest/download/MojaTV.apk` → **Install**.
+
+**Logowanie telefonem (bez wpisywania pilotem):**
+- Przy pierwszym uruchomieniu Fire TV pokazuje kod QR i 4-cyfrowy PIN.
+- Zeskanuj kod aparatem telefonu — otworzy się strona, na której wpisujesz dane (Xtream albo M3U). Telewizor zaloguje się sam.
+- Albo w MojaTV na telefonie: **Ustawienia → Wyślij profil na telewizor** — wybierasz zapisany profil, telewizor jest wyszukiwany automatycznie, wpisujesz tylko PIN.
+- Telefon i Fire TV muszą być w tej samej sieci Wi‑Fi.
+
+**Profile:** każde konto/playlista zapisuje się jako profil. W **Ustawieniach → Profile** przełączasz je jednym kliknięciem; nowy profil na Fire TV dodajesz przez **Dodaj profil telefonem (kod QR)**.
+
+**Pilot w odtwarzaczu:** ▲▼ zmiana kanału, ◀▶ przewijanie filmów, OK pokazuje przyciski, ≡ (Menu) otwiera opcje (proporcje obrazu, program TV i nagrywanie, VLC), Wstecz chowa przyciski / zamyka.
+
 ## Jak zbudować plik APK (bez instalowania niczego)
 
 1. Załóż darmowe konto na github.com i utwórz nowe repozytorium (np. `mojatv`, może być prywatne).

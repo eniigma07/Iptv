@@ -90,7 +90,7 @@ class Repository(context: Context) {
     // ---------------- Logowanie ----------------
 
     /** Sprawdza dane, zapisuje źródło i wczytuje katalog. Rzuca wyjątek z opisem błędu. */
-    suspend fun signIn(input: SourceConfig) {
+    suspend fun signIn(input: SourceConfig, profileName: String? = null) {
         var cfg = input
         try {
             when (cfg.type) {
@@ -129,6 +129,7 @@ class Repository(context: Context) {
         loadNow(force = true)
         val s = _state.value
         if (s is LoadState.Error) throw IOException(s.message)
+        storage.upsertProfile(cfg, profileName)
     }
 
     /**

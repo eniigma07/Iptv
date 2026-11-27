@@ -38,6 +38,29 @@ data class SourceConfig(
     }
 }
 
+/** Zapisany profil (dane logowania) — szybkie przełączanie między kontami/playlistami. */
+data class SavedProfile(val name: String, val config: SourceConfig) {
+    /** Ten sam profil = ten sam serwer i login albo ten sam link playlisty. */
+    val key: String get() = profileKey(config)
+
+    companion object {
+        fun profileKey(c: SourceConfig): String = when (c.type) {
+            SourceType.XTREAM -> "x|" + c.server.trimEnd('/').lowercase() + "|" + c.username
+            SourceType.M3U -> "m|" + c.m3uUrl.trim()
+        }
+
+        fun defaultName(c: SourceConfig): String {
+            val host = runCatching {
+                android.net.Uri.parse(if (c.type == SourceType.XTREAM) c.server else c.m3uUrl).host
+            }.getOrNull().orEmpty()
+            return when (c.type) {
+                SourceType.XTREAM -> if (host.isNotBlank()) "${c.username} · $host" else c.username
+                SourceType.M3U -> host.ifBlank { "Playlista M3U" }
+            }
+        }
+    }
+}
+
 enum class ContentKind { LIVE, MOVIE, SERIES, EPISODE, RADIO }
 
 data class Category(val id: String, val name: String)

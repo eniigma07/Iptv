@@ -31,11 +31,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // porządek w nagraniach (np. po wyłączeniu telefonu w trakcie nagrywania)
         runCatching { com.mojatv.app.rec.RecordingScheduler.rescheduleAll(this) }
+        val isTv = Device.isTv(this)
         setContent {
             MojaTvTheme {
-                // Surface ustawia jasny kolor tekstu na ciemnym tle na wszystkich ekranach
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    AppRoot()
+                TvFocusProvider(isTv) {
+                    // Surface ustawia jasny kolor tekstu na ciemnym tle na wszystkich ekranach
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        AppRoot()
+                    }
                 }
             }
         }
@@ -49,6 +52,12 @@ object Routes {
     const val SHOW_SETTINGS = "show-settings"
     const val RECORDINGS = "recordings"
     const val EPG_TIME = "epg-time"
+    /** Fire TV: dodanie profilu telefonem (kod QR). */
+    const val PAIR = "pair"
+    /** Telefon: dodanie profilu wpisując dane. */
+    const val ADD_PROFILE = "add-profile"
+    /** Telefon: wysłanie profilu na Fire TV. */
+    const val SEND_TO_TV = "send-to-tv"
     fun movie(id: String) = "movie/${Uri.encode(id)}"
     fun series(id: String) = "series/${Uri.encode(id)}"
 }
@@ -90,5 +99,21 @@ fun AppRoot() {
         composable(Routes.SHOW_SETTINGS) { ShowSettingsScreen(nav) }
         composable(Routes.RECORDINGS) { RecordingsScreen(nav) }
         composable(Routes.EPG_TIME) { EpgTimeScreen(nav) }
+        composable(Routes.PAIR) {
+            PairingScreen(
+                onDone = { nav.popBackStack(Routes.MAIN, inclusive = false) },
+                onManual = { nav.navigate(Routes.ADD_PROFILE) },
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.ADD_PROFILE) {
+            LoginScreen(
+                onDone = { nav.popBackStack(Routes.MAIN, inclusive = false) },
+                onBack = { nav.popBackStack() },
+                prefill = false,
+                allowPairing = false,
+            )
+        }
+        composable(Routes.SEND_TO_TV) { SendToTvScreen(nav) }
     }
 }
