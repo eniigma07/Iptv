@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.OpenInNew
@@ -49,6 +51,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -131,6 +135,8 @@ class PlayerActivity : ComponentActivity() {
     private var playerView: PlayerView? = null
     private var tvMenu by mutableStateOf(false)
     private var tvUi by mutableStateOf(TvUi.HIDDEN)
+    /** Okno wyboru ścieżki: C.TRACK_TYPE_AUDIO albo C.TRACK_TYPE_TEXT. */
+    private var tracksDialog by mutableStateOf<Int?>(null)
     private var tvUiStamp by mutableIntStateOf(0)
 
     // ---- diagnostyka obrazu (Menu → Informacje o obrazie) ----
@@ -150,6 +156,11 @@ class PlayerActivity : ComponentActivity() {
             tunneling = isTv && st.tvTunneling,
             tsCompat = st.tsCompat,
         )
+        // zapamiętany język dźwięku i napisów
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().apply {
+            st.prefAudioLang?.let { setPreferredAudioLanguage(it) }
+            st.prefTextLang?.let { setPreferredTextLanguage(it) }
+        }.build()
         player.addListener(listener)
         player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
             override fun onVideoDecoderInitialized(
@@ -424,7 +435,7 @@ class PlayerActivity : ComponentActivity() {
      *  - Menu (≡) = opcje, play/pauza na pilocie działa zawsze.
      */
     private fun handleTvKey(e: KeyEvent): Boolean {
-        if (castDialog || recordDialog || tvMenu || castTarget != null) return false
+        if (castDialog || recordDialog || tvMenu || tracksDialog != null || castTarget != null) return false
         val item = current ?: return false
         val down = e.action == KeyEvent.ACTION_DOWN
         val first = down && e.repeatCount == 0
@@ -630,6 +641,7 @@ class PlayerActivity : ComponentActivity() {
 
             if (castDialog) CastDialog()
             if (tvMenu && item != null) TvMenu(item)
+            tracksDialog?.let { TracksDialog(it) }
             if (showStats && !inPip) StatsOverlay(Modifier.align(Alignment.BottomStart))
             if (recordDialog && item != null) {
                 com.mojatv.app.ui.ChannelGuide(item, onDismiss = { recordDialog = false }, onStartedNow = {
@@ -765,7 +777,7 @@ class PlayerActivity : ComponentActivity() {
                     Spacer(Modifier.size(12.dp))
                 }
                 if (full) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         TvBarButton(Icons.AutoMirrored.Filled.ArrowBack, "Wstecz") { finish() }
                         if (item.isLive) {
                             if (items.size > 1) TvBarButton(Icons.Filled.SkipPrevious, "Poprz. kanał") { zap(-1) }
@@ -788,6 +800,8 @@ class PlayerActivity : ComponentActivity() {
                         if (item.kind == com.mojatv.app.data.ContentKind.LIVE) {
                             TvBarButton(Icons.Filled.FiberManualRecord, "Program TV") { recordDialog = true }
                         }
+                        TvBarButton(Icons.Filled.Audiotrack, "Dźwięk") { tracksDialog = androidx.media3.common.C.TRACK_TYPE_AUDIO }
+                        TvBarButton(Icons.Filled.Subtitles, "Napisy") { tracksDialog = androidx.media3.common.C.TRACK_TYPE_TEXT }
                         TvBarButton(Icons.Filled.AspectRatio, "Obraz") {
                             resizeMode = when (resizeMode) {
                                 AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -817,7 +831,7 @@ class PlayerActivity : ComponentActivity() {
     ) {
         Column(
             modifier
-                .width(104.dp)
+                .width(84.dp)
                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                 .background(Color(0x33FFFFFF))
                 .clickable { tvUiStamp++; onClick() }
@@ -856,6 +870,80 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** Wybór języka dźwięku albo napisów (ścieżki zapisane w filmie / strumieniu). */
+    @Composable
+    private fun TracksDialog(type: Int) {
+        val isText = type == androidx.media3.common.C.TRACK_TYPE_TEXT
+        val names = remember { androidx.media3.ui.DefaultTrackNameProvider(resources) }
+        val groups = player.currentTracks.groups.filter { it.type == type }
+        val opts = buildList {
+            groups.forEach { g ->
+                for (i in 0 until g.length) {
+                    if (!g.isTrackSupported(i)) continue
+                    add(Opt(names.getTrackName(g.getTrackFormat(i)), g, i, g.isTrackSelected(i)))
+                }
+            }
+        }
+        val anySelected = opts.any { it.selected }
+        val title = if (isText) "Napisy" else "Język / ścieżka dźwiękowa"
+
+        AlertDialog(
+            onDismissRequest = { tracksDialog = null },
+            title = { Text(title) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (opts.isEmpty()) {
+                        Text(
+                            if (isText) "Ten film nie ma wbudowanych napisów."
+                            else "Ten materiał ma tylko jedną ścieżkę dźwiękową.",
+                        )
+                    }
+                    if (isText && opts.isNotEmpty()) {
+                        TrackRow("Wyłączone", !anySelected) {
+                            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                                .clearOverridesOfType(type)
+                                .setTrackTypeDisabled(type, true)
+                                .build()
+                            repo.storage.prefTextLang = null
+                            tracksDialog = null
+                        }
+                    }
+                    opts.forEach { o ->
+                        TrackRow(o.label, o.selected) {
+                            val g = o.group ?: return@TrackRow
+                            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                                .setTrackTypeDisabled(type, false)
+                                .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, o.index))
+                                .build()
+                            val lang = g.getTrackFormat(o.index).language
+                            if (isText) repo.storage.prefTextLang = lang else repo.storage.prefAudioLang = lang
+                            tracksDialog = null
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { tracksDialog = null }) { Text("Zamknij") } },
+        )
+    }
+
+    private class Opt(val label: String, val group: androidx.media3.common.Tracks.Group?, val index: Int, val selected: Boolean)
+
+    @Composable
+    private fun TrackRow(label: String, selected: Boolean, onClick: () -> Unit) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.RadioButton(selected = selected, onClick = null)
+            Spacer(Modifier.width(10.dp))
+            Text(label)
+        }
+    }
+
     /** Menu opcji na telewizorze (przycisk ≡ na pilocie). */
     @Composable
     private fun TvMenu(item: PlayItem) {
@@ -868,7 +956,7 @@ class PlayerActivity : ComponentActivity() {
             onDismissRequest = { tvMenu = false },
             title = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     TextButton(onClick = {
                         resizeMode = when (resizeMode) {
                             AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -888,6 +976,12 @@ class PlayerActivity : ComponentActivity() {
                         TextButton(onClick = { tvMenu = false; zap(-1) }, enabled = index > 0, modifier = Modifier.fillMaxWidth()) {
                             Text(if (item.isLive) "Poprzedni kanał" else "Poprzedni")
                         }
+                    }
+                    TextButton(onClick = { tvMenu = false; tracksDialog = androidx.media3.common.C.TRACK_TYPE_AUDIO }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Język / ścieżka dźwiękowa")
+                    }
+                    TextButton(onClick = { tvMenu = false; tracksDialog = androidx.media3.common.C.TRACK_TYPE_TEXT }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Napisy")
                     }
                     TextButton(onClick = { tvMenu = false; openExternal(item) }, modifier = Modifier.fillMaxWidth()) {
                         Text("Otwórz w zewnętrznym odtwarzaczu (VLC)")

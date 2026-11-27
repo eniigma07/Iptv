@@ -78,6 +78,15 @@ class Storage(context: Context) {
         get() = prefs.getBoolean("tsCompat", false)
         set(v) = prefs.edit().putBoolean("tsCompat", v).apply()
 
+    /** Ostatnio wybrany język ścieżki dźwiękowej i napisów (np. "pl", "en"); null = domyślny. */
+    var prefAudioLang: String?
+        get() = prefs.getString("prefAudioLang", null)
+        set(v) = prefs.edit().putString("prefAudioLang", v).apply()
+
+    var prefTextLang: String?
+        get() = prefs.getString("prefTextLang", null)
+        set(v) = prefs.edit().putString("prefTextLang", v).apply()
+
     /** Fire TV: otwieraj kanały i filmy od razu w VLC. */
     var tvUseVlc: Boolean
         get() = prefs.getBoolean("tvUseVlc", false)

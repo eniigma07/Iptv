@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -82,7 +83,13 @@ private fun DetailHeader(
     backdrop: String?,
     meta: List<String>,
     onBack: () -> Unit,
+    /** Na telewizorze opis jest obok plakatu — od razu widoczny, bez przewijania. */
+    plot: String? = null,
 ) = Column {
+    if (LocalIsTv.current) {
+        TvDetailHeader(title, poster, backdrop, meta, plot)
+        return@Column
+    }
     Box(Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
             NetImage(backdrop ?: poster, title, Modifier.fillMaxSize())
@@ -113,6 +120,50 @@ private fun DetailHeader(
             Spacer(Modifier.height(6.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 meta.forEach { Text(it, color = TextSecondary, fontSize = 13.sp) }
+            }
+        }
+    }
+}
+
+/** Telewizor: mały plakat po lewej, tytuł i opis po prawej, tło przyciemnione — wszystko na jednym ekranie. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TvDetailHeader(
+    title: String,
+    poster: String?,
+    backdrop: String?,
+    meta: List<String>,
+    plot: String?,
+) {
+    Box(Modifier.fillMaxWidth().height(270.dp)) {
+        if (backdrop != null) NetImage(backdrop, title, Modifier.fillMaxSize())
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(listOf(Background, Background.copy(alpha = 0.92f), Color(0x99000000)))
+            )
+        )
+        Row(Modifier.fillMaxSize().padding(start = 32.dp, end = 32.dp, top = 24.dp, bottom = 12.dp)) {
+            Box(
+                Modifier
+                    .width(150.dp)
+                    .aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(8.dp))
+            ) {
+                NetImage(poster, title, Modifier.fillMaxSize())
+            }
+            Column(Modifier.padding(start = 24.dp).weight(1f)) {
+                Text(
+                    title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    meta.forEach { Text(it, color = TextSecondary, fontSize = 14.sp) }
+                }
+                if (!plot.isNullOrBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(plot, fontSize = 15.sp, lineHeight = 21.sp, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
@@ -162,6 +213,9 @@ fun MovieDetailScreen(id: String, nav: NavController) {
     val item = movie.toPlayItem()
     val progress = progressMap[item.key]?.takeIf { !it.finished && it.position > 30_000 }
     val d = detail
+    val isTv = LocalIsTv.current
+    val playFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    if (isTv) LaunchedEffect(Unit) { kotlinx.coroutines.delay(150); runCatching { playFocus.requestFocus() } }
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -175,15 +229,16 @@ fun MovieDetailScreen(id: String, nav: NavController) {
                     (d?.rating ?: movie.rating)?.let { formatRating(it) },
                 ),
                 onBack = { nav.popBackStack() },
+                plot = d?.plot,
             )
         }
         item {
             Row(
-                Modifier.padding(horizontal = 16.dp).offset(y = (-32).dp),
+                Modifier.padding(horizontal = if (isTv) 32.dp else 16.dp).offset(y = if (isTv) 0.dp else (-32).dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Button(onClick = { context.playVideo(item) }) {
+                Button(onClick = { context.playVideo(item) }, modifier = Modifier.focusRequester(playFocus)) {
                     Icon(Icons.Filled.PlayArrow, null)
                     Text(if (progress != null) "Wznów ${formatClock(progress.position)}" else "Odtwórz")
                 }
@@ -203,7 +258,7 @@ fun MovieDetailScreen(id: String, nav: NavController) {
             item {
                 LinearProgressIndicator(
                     progress = { progress.fraction },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).offset(y = (-24).dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).offset(y = if (isTv) 4.dp else (-24).dp),
                     color = Accent,
                     trackColor = SurfaceHigh,
                 )
@@ -217,8 +272,8 @@ fun MovieDetailScreen(id: String, nav: NavController) {
             }
         } else {
             item {
-                Column {
-                    if (!d.plot.isNullOrBlank()) {
+                Column(Modifier.padding(top = if (isTv) 12.dp else 0.dp)) {
+                    if (!d.plot.isNullOrBlank() && !isTv) {
                         Text(d.plot, modifier = Modifier.padding(horizontal = 16.dp), lineHeight = 21.sp)
                     }
                     InfoBlock("Gatunek", d.genre)
@@ -280,6 +335,10 @@ fun SeriesDetailScreen(id: String, nav: NavController) {
     if (season == -1 && seasons.isNotEmpty()) season = lastEpisode?.season ?: seasons.first()
     val episodes = d?.seasons?.get(season).orEmpty()
 
+    val isTv = LocalIsTv.current
+    val playFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    if (isTv) LaunchedEffect(allEpisodes.isNotEmpty()) { kotlinx.coroutines.delay(150); runCatching { playFocus.requestFocus() } }
+
     fun playEpisode(list: List<Episode>, index: Int, from: Long = -1) {
         context.playVideo(list.map { it.toPlayItem(series) }, index, from)
     }
@@ -296,15 +355,17 @@ fun SeriesDetailScreen(id: String, nav: NavController) {
                     series.rating?.let { formatRating(it) },
                 ),
                 onBack = { nav.popBackStack() },
+                plot = d?.plot,
             )
         }
         item {
             Row(
-                Modifier.padding(horizontal = 16.dp).offset(y = (-32).dp),
+                Modifier.padding(horizontal = if (isTv) 32.dp else 16.dp).offset(y = if (isTv) 0.dp else (-32).dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(
+                    modifier = Modifier.focusRequester(playFocus),
                     enabled = allEpisodes.isNotEmpty(),
                     onClick = {
                         val target = if (lastEpisode != null && lastWatched?.finished == false) lastEpisode
@@ -333,8 +394,8 @@ fun SeriesDetailScreen(id: String, nav: NavController) {
         }
         if (d != null) {
             item {
-                Column {
-                    if (!d.plot.isNullOrBlank()) {
+                Column(Modifier.padding(top = if (isTv) 12.dp else 0.dp)) {
+                    if (!d.plot.isNullOrBlank() && !isTv) {
                         Text(
                             d.plot, modifier = Modifier.padding(horizontal = 16.dp),
                             maxLines = 6, overflow = TextOverflow.Ellipsis, lineHeight = 21.sp,
