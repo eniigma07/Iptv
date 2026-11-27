@@ -20,6 +20,12 @@ class RadioService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val player = PlayerFactory.create(this, audioOnly = true)
+        // RDS: wykonawca i tytuł utworu przysyłane przez stację
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMetadata(metadata: androidx.media3.common.Metadata) {
+                radioTextFrom(metadata)?.let { RadioController.onRadioText(it) }
+            }
+        })
         val openApp = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),

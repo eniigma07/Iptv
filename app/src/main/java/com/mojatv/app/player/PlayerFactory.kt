@@ -14,6 +14,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import com.mojatv.app.data.Http
@@ -22,13 +23,21 @@ import com.mojatv.app.data.PlayItem
 @androidx.annotation.OptIn(UnstableApi::class)
 object PlayerFactory {
 
-    fun create(context: Context, audioOnly: Boolean = false): ExoPlayer {
+    fun create(
+        context: Context,
+        audioOnly: Boolean = false,
+        /** Fire TV: obraz i dźwięk synchronizowane sprzętowo (płynniej na słabszych urządzeniach). */
+        tunneling: Boolean = false,
+        /** Domyślny (zgodny) sposób dzielenia strumienia TS na klatki. */
+        tsCompat: Boolean = false,
+    ): ExoPlayer {
         val http = OkHttpDataSource.Factory(Http.client)
         val dataSource = DefaultDataSource.Factory(context, http)
 
         val extractors = DefaultExtractorsFactory()
             .setTsExtractorFlags(
-                DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
+                if (tsCompat) 0
+                else DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
                     DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
             )
             .setConstantBitrateSeekingEnabled(true)
@@ -50,7 +59,12 @@ object PlayerFactory {
             .setContentType(if (audioOnly) C.AUDIO_CONTENT_TYPE_MUSIC else C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
+        val trackSelector = DefaultTrackSelector(context).apply {
+            setParameters(buildUponParameters().setTunnelingEnabled(tunneling && !audioOnly))
+        }
+
         return ExoPlayer.Builder(context, renderers)
+            .setTrackSelector(trackSelector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource, extractors))
             .setLoadControl(loadControl)
             .setAudioAttributes(audio, true)

@@ -76,6 +76,9 @@ fun SettingsScreen(nav: NavController, onSignOut: () -> Unit) {
 
     var liveFormat by remember { mutableStateOf(storage.liveFormat) }
     var epgEnabled by remember { mutableStateOf(storage.epgEnabled) }
+    var tsCompat by remember { mutableStateOf(storage.tsCompat) }
+    var tvTunneling by remember { mutableStateOf(storage.tvTunneling) }
+    var tvUseVlc by remember { mutableStateOf(storage.tvUseVlc) }
     var hideAdult by remember { mutableStateOf(storage.hideAdult) }
     var userAgent by remember { mutableStateOf(storage.userAgent) }
     var epgUrl by remember { mutableStateOf(source?.epgUrl ?: "") }
@@ -219,6 +222,25 @@ fun SettingsScreen(nav: NavController, onSignOut: () -> Unit) {
                         Text(label)
                     }
                 }
+            }
+            SwitchLine("Zgodny odczyt strumieni TS (gdy obraz się zacina lub jest w zwolnionym tempie)", tsCompat) {
+                tsCompat = it
+                storage.tsCompat = it
+            }
+            if (isTv) {
+                SwitchLine("Sprzętowa synchronizacja obrazu i dźwięku (Fire TV)", tvTunneling) {
+                    tvTunneling = it
+                    storage.tvTunneling = it
+                }
+                SwitchLine("Odtwarzaj w VLC zamiast wbudowanego odtwarzacza", tvUseVlc) {
+                    tvUseVlc = it
+                    storage.tvUseVlc = it
+                }
+                Text(
+                    "Zmiany działają po ponownym włączeniu kanału. VLC zainstalujesz za darmo z Amazon Appstore.",
+                    color = TextSecondary, fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 OutlinedTextField(

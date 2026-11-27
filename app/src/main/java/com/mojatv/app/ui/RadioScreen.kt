@@ -1,5 +1,13 @@
 package com.mojatv.app.ui
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -86,6 +94,7 @@ fun RadioScreen() {
     fun play(item: PlayItem) = RadioController.play(context, item)
 
     LazyColumn(Modifier.fillMaxSize()) {
+        item { NowPlayingCard() }
         item {
             OutlinedTextField(
                 value = query,
@@ -146,5 +155,61 @@ fun RadioScreen() {
                 ChannelRow(st, null, null, null, st.key in favKeys, onClick = { play(st) }, onToggleFavorite = { repo.storage.toggleFavorite(st) })
             }
         }
+    }
+}
+
+/** „Teraz gra” — stacja i tekst RDS (wykonawca – tytuł), przewijany jak w radiu samochodowym. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun NowPlayingCard() {
+    val state by RadioController.state.collectAsState()
+    val s = state ?: return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(com.mojatv.app.ui.theme.SurfaceHigh)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(64.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            NetImage(s.item.image, s.item.title, Modifier.fillMaxSize(), androidx.compose.ui.layout.ContentScale.Fit)
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+            Text(
+                "TERAZ GRA",
+                color = com.mojatv.app.ui.theme.Accent,
+                fontSize = 11.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+            Text(
+                s.item.title,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            val rds = s.error ?: s.streamTitle ?: if (s.isBuffering) "Łączenie…" else "Stacja nie podaje tytułu utworu"
+            Text(
+                rds,
+                color = if (s.streamTitle != null) androidx.compose.ui.graphics.Color.White else TextSecondary,
+                fontSize = 15.sp,
+                maxLines = 1,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+            )
+        }
+        if (s.isBuffering) {
+            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+        } else {
+            IconButton(onClick = { RadioController.togglePause() }) {
+                Icon(
+                    if (s.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    if (s.isPlaying) "Pauza" else "Odtwarzaj",
+                )
+            }
+        }
+        IconButton(onClick = { RadioController.stop() }) { Icon(Icons.Filled.Close, "Zatrzymaj") }
     }
 }

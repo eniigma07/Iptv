@@ -1,6 +1,7 @@
 package com.mojatv.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -141,6 +142,7 @@ fun MainTabs(nav: NavController) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RadioMiniPlayer() {
     val state by RadioController.state.collectAsState()
@@ -158,7 +160,11 @@ fun RadioMiniPlayer() {
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(s.item.title, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val line = s.error ?: s.streamTitle ?: if (s.isBuffering) "Łączenie…" else "Radio"
-            Text(line, fontSize = 12.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                line, fontSize = 12.sp, maxLines = 1,
+                color = if (s.streamTitle != null && s.error == null) androidx.compose.ui.graphics.Color.White else TextSecondary,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+            )
         }
         if (s.isBuffering) {
             CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)

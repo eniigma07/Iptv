@@ -31,6 +31,16 @@ object RadioController {
     private val _state = MutableStateFlow<RadioState?>(null)
     val state: StateFlow<RadioState?> = _state
 
+    /** Ostatni tekst RDS (wykonawca – tytuł) z bieżącej stacji. */
+    @Volatile private var radioText: String? = null
+
+    /** Wywoływane przez usługę radia, gdy stacja przyśle nowy tekst (ICY / ID3) — jak RDS w zwykłym radiu. */
+    fun onRadioText(text: String) {
+        if (text == radioText) return
+        radioText = text
+        _state.value = _state.value?.copy(streamTitle = text)
+    }
+
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) = refresh()
         override fun onPlaybackStateChanged(playbackState: Int) = refresh()
@@ -64,6 +74,7 @@ object RadioController {
 
     fun play(context: Context, item: PlayItem) {
         currentItem = item
+        radioText = null
         _state.value = RadioState(item, false, true, null, null)
         connect(context) {
             controller?.let { c ->
@@ -90,6 +101,7 @@ object RadioController {
             c.clearMediaItems()
         }
         currentItem = null
+        radioText = null
         _state.value = null
     }
 
@@ -101,8 +113,27 @@ object RadioController {
             item = item,
             isPlaying = c.isPlaying,
             isBuffering = c.playbackState == Player.STATE_BUFFERING,
-            streamTitle = title,
+            streamTitle = radioText ?: title,
             error = null,
         )
     }
+}
+
+/** Tekst „teraz gra” ze strumienia radia: ICY (Shoutcast/Icecast) albo ID3 (HLS). */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+fun radioTextFrom(m: androidx.media3.common.Metadata): String? {
+    var icy: String? = null
+    var artist: String? = null
+    var title: String? = null
+    for (i in 0 until m.length()) {
+        when (val e = m.get(i)) {
+            is androidx.media3.extractor.metadata.icy.IcyInfo -> icy = e.title
+            is androidx.media3.extractor.metadata.id3.TextInformationFrame -> when (e.id) {
+                "TIT2" -> title = e.values.firstOrNull()
+                "TPE1" -> artist = e.values.firstOrNull()
+            }
+        }
+    }
+    val text = icy ?: listOfNotNull(artist, title).filter { it.isNotBlank() }.joinToString(" – ")
+    return text.trim().trim('-', ' ').takeIf { it.isNotEmpty() }
 }

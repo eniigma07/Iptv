@@ -68,6 +68,21 @@ class Storage(context: Context) {
         get() = prefs.getString("liveFormat", "ts") ?: "ts"
         set(v) = prefs.edit().putString("liveFormat", v).apply()
 
+    /** Fire TV: sprzętowa synchronizacja obrazu z dźwiękiem (tunelowanie). */
+    var tvTunneling: Boolean
+        get() = prefs.getBoolean("tvTunneling", true)
+        set(v) = prefs.edit().putBoolean("tvTunneling", v).apply()
+
+    /** Zgodny tryb odczytu strumieni TS (pomaga na kanałach z przeplotem / zacinających się). */
+    var tsCompat: Boolean
+        get() = prefs.getBoolean("tsCompat", false)
+        set(v) = prefs.edit().putBoolean("tsCompat", v).apply()
+
+    /** Fire TV: otwieraj kanały i filmy od razu w VLC. */
+    var tvUseVlc: Boolean
+        get() = prefs.getBoolean("tvUseVlc", false)
+        set(v) = prefs.edit().putBoolean("tvUseVlc", v).apply()
+
     var epgEnabled: Boolean
         get() = prefs.getBoolean("epgEnabled", true)
         set(v) = prefs.edit().putBoolean("epgEnabled", v).apply()

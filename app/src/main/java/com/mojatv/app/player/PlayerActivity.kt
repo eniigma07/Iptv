@@ -59,6 +59,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -126,6 +128,8 @@ class PlayerActivity : ComponentActivity() {
     private val isTv by lazy { com.mojatv.app.ui.Device.isTv(this) }
     private var playerView: PlayerView? = null
     private var tvMenu by mutableStateOf(false)
+    private var tvUi by mutableStateOf(TvUi.HIDDEN)
+    private var tvUiStamp by mutableIntStateOf(0)
 
     // ---- diagnostyka obrazu (Menu → Informacje o obrazie) ----
     private var showStats by mutableStateOf(false)
@@ -138,7 +142,12 @@ class PlayerActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
 
-        player = PlayerFactory.create(this)
+        val st = repo.storage
+        player = PlayerFactory.create(
+            this,
+            tunneling = isTv && st.tvTunneling,
+            tsCompat = st.tsCompat,
+        )
         player.addListener(listener)
         player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
             override fun onVideoDecoderInitialized(
@@ -177,6 +186,14 @@ class PlayerActivity : ComponentActivity() {
             finish()
             return
         }
+        val first = items.getOrNull(PlaybackQueue.index)
+        if (isTv && repo.storage.tvUseVlc && first != null && !first.key.startsWith("rec:")) {
+            // ustawienie: na telewizorze odtwarzaj w VLC
+            repo.storage.addRecent(first)
+            openInVlc(first)
+            finish()
+            return
+        }
         play(PlaybackQueue.index, PlaybackQueue.startPosition)
     }
 
@@ -185,6 +202,7 @@ class PlayerActivity : ComponentActivity() {
         index = i
         droppedFrames = 0
         videoDecoder = null
+        showTvInfo()
         error = null
         triedHls = false
         liveRetries = 0
@@ -397,21 +415,38 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
-     * Pilot na Fire TV:
-     *  - kanały na żywo: góra/dół = poprzedni/następny kanał (także przyciski CH+/CH−),
+     * Pilot na Fire TV (bez przycisków odtwarzacza na ekranie):
+     *  - OK = pasek z przyciskami (Wstecz, pauza, kanały, opcje…), Wstecz = schowaj pasek / zamknij,
+     *  - kanały na żywo: góra/dół = poprzedni/następny kanał (także CH+/CH−),
      *  - filmy i seriale: lewo/prawo = przewijanie −10 s / +30 s,
-     *  - OK = pokaż przyciski odtwarzacza, Menu (≡) = opcje, Wstecz = schowaj przyciski / zamknij.
+     *  - Menu (≡) = opcje, play/pauza na pilocie działa zawsze.
      */
     private fun handleTvKey(e: KeyEvent): Boolean {
         if (castDialog || recordDialog || tvMenu || castTarget != null) return false
         val item = current ?: return false
         val down = e.action == KeyEvent.ACTION_DOWN
+        val first = down && e.repeatCount == 0
         when (e.keyCode) {
-            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE -> {
-                if (down && e.repeatCount == 0) {
-                    if (e.keyCode == KeyEvent.KEYCODE_GUIDE && item.kind == com.mojatv.app.data.ContentKind.LIVE) recordDialog = true
-                    else tvMenu = true
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> {
+                if (first) tvMenu = true
+                return true
+            }
+            KeyEvent.KEYCODE_GUIDE -> {
+                if (first) {
+                    if (item.kind == com.mojatv.app.data.ContentKind.LIVE) recordDialog = true else tvMenu = true
                 }
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (first) { togglePlay(); showTvInfo() }
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                if (down && !item.isLive) { seekBy(30_000); showTvInfo() }
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                if (down && !item.isLive) { seekBy(-10_000); showTvInfo() }
                 return true
             }
             KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {
@@ -423,42 +458,63 @@ class PlayerActivity : ComponentActivity() {
                 return true
             }
         }
-        if (error != null) {
-            if (e.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || e.keyCode == KeyEvent.KEYCODE_ENTER) {
-                if (down) play(index)
-                return true
-            }
-            return false
-        }
-        val pv = playerView ?: return false
-        if (controlsVisible) {
+        // komunikat błędu ma własne przyciski — pilot chodzi po nich
+        if (error != null) return false
+        if (tvUi == TvUi.FULL) {
             if (e.keyCode == KeyEvent.KEYCODE_BACK) {
-                if (down) pv.hideController()
+                if (first) tvUi = TvUi.HIDDEN
                 return true
             }
-            // przyciski odtwarzacza są widoczne — strzałki chodzą po nich
-            return false
+            if (down) tvUiStamp++   // pasek zostaje, dopóki coś klikasz
+            return false             // strzałki i OK chodzą po przyciskach paska
         }
         when (e.keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> if (item.isLive && items.size > 1) {
-                if (down) zap(-1)
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                if (first) showTvBar()
                 return true
             }
-            KeyEvent.KEYCODE_DPAD_DOWN -> if (item.isLive && items.size > 1) {
-                if (down) zap(+1)
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                if (down) { if (item.isLive && items.size > 1) zap(-1) else showTvBar() }
                 return true
             }
-            KeyEvent.KEYCODE_DPAD_LEFT -> if (!item.isLive) {
-                if (down) seekBy(-10_000)
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (down) { if (item.isLive && items.size > 1) zap(+1) else showTvBar() }
                 return true
             }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> if (!item.isLive) {
-                if (down) seekBy(30_000)
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (down) { if (!item.isLive) { seekBy(-10_000); showTvInfo() } else showTvBar() }
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (down) { if (!item.isLive) { seekBy(30_000); showTvInfo() } else showTvBar() }
                 return true
             }
         }
-        // OK, przyciski multimediów (play/pauza, przewijanie) — obsługuje odtwarzacz
-        return pv.dispatchKeyEvent(e)
+        return false
+    }
+
+    private enum class TvUi { HIDDEN, INFO, FULL }
+
+    /** Opis kanału na chwilę (po zmianie kanału, przewinięciu) — sam znika. */
+    private fun showTvInfo() {
+        if (!isTv) return
+        if (tvUi != TvUi.FULL) tvUi = TvUi.INFO
+        tvUiStamp++
+    }
+
+    /** Pasek z przyciskami do sterowania pilotem. */
+    private fun showTvBar() {
+        tvUi = TvUi.FULL
+        tvUiStamp++
+    }
+
+    private fun togglePlay() {
+        if (player.isPlaying) {
+            player.pause()
+        } else {
+            if (player.playbackState == Player.STATE_IDLE) player.prepare()
+            player.play()
+        }
     }
 
     private fun zap(delta: Int) {
@@ -547,7 +603,8 @@ class PlayerActivity : ComponentActivity() {
                     }
                 },
                 update = { view ->
-                    view.useController = !inPip && castTarget == null
+                    // na telewizorze własny pasek sterowany pilotem zamiast przycisków dotykowych
+                    view.useController = !isTv && !inPip && castTarget == null
                     view.resizeMode = resizeMode
                 },
             )
@@ -555,6 +612,8 @@ class PlayerActivity : ComponentActivity() {
             val item = current
             if (item != null && castTarget != null) {
                 CastOverlay(item, castTarget!!)
+            } else if (isTv) {
+                if (item != null && !inPip && tvUi != TvUi.HIDDEN) TvOverlay(item, full = tvUi == TvUi.FULL)
             } else if (item != null && controlsVisible && !inPip) {
                 TopBar(item)
                 if (items.size > 1 && !isTv) {
@@ -601,11 +660,170 @@ class PlayerActivity : ComponentActivity() {
                     Text(err, color = Color.White, fontSize = 15.sp)
                     Spacer(Modifier.size(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onClick = { play(index) }) { Text("Spróbuj ponownie") }
+                        val retryFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+                        if (isTv) LaunchedEffect(err) { delay(80); runCatching { retryFocus.requestFocus() } }
+                        Button(onClick = { play(index) }, modifier = Modifier.focusRequester(retryFocus)) { Text("Spróbuj ponownie") }
                         OutlinedButton(onClick = { openExternal(item) }) { Text("Otwórz w VLC") }
                     }
                 }
             }
+        }
+    }
+
+    // ---------------- Pasek na telewizorze ----------------
+
+    @Composable
+    private fun TvOverlay(item: PlayItem, full: Boolean) {
+        // samo znika: opis po 4,5 s, pasek 8 s po ostatnim naciśnięciu pilota
+        LaunchedEffect(full, tvUiStamp) {
+            delay(if (full) 8_000 else 4_500)
+            tvUi = TvUi.HIDDEN
+        }
+        var tick by remember { mutableIntStateOf(0) }
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(500)
+                tick++
+            }
+        }
+        @Suppress("UNUSED_VARIABLE") val t = tick
+        val playFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+        LaunchedEffect(full) {
+            if (full) {
+                delay(80)
+                runCatching { playFocus.requestFocus() }
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        val nowProgram = programs.firstOrNull { it.start <= now && it.end > now }
+        val nextProgram = programs.firstOrNull { it.start > now }
+        val fmt = com.mojatv.app.data.EpgTime
+
+        Box(Modifier.fillMaxSize()) {
+            // ---- opis: kanał / film i program ----
+            Column(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color(0xE6000000), Color.Transparent)))
+                    .padding(horizontal = 48.dp, vertical = 28.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (item.isLive && items.size > 1) {
+                        Text("${index + 1}", color = Color(0xFFE5484D), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(14.dp))
+                    }
+                    Text(
+                        item.title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 24.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                item.subtitle?.takeIf { !item.isLive }?.let {
+                    Text(it, color = Color(0xFFCCCCCC), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (nowProgram != null) {
+                    Text(
+                        "${fmt.hm(nowProgram.start)}–${fmt.hm(nowProgram.end)}  ${nowProgram.title}",
+                        color = Color(0xFFEEEEEE), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    LinearProgressIndicator(
+                        progress = { nowProgram.progress(now) },
+                        modifier = Modifier.width(320.dp).padding(vertical = 6.dp),
+                    )
+                }
+                if (nextProgram != null) {
+                    Text(
+                        "Następnie ${fmt.hm(nextProgram.start)}  ${nextProgram.title}",
+                        color = Color(0xFFAAAAAA), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            // ---- dół: czas filmu i przyciski ----
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
+                    .padding(horizontal = 48.dp, vertical = 24.dp),
+            ) {
+                if (!item.isLive) {
+                    val pos = player.currentPosition.coerceAtLeast(0)
+                    val dur = player.duration.takeIf { it > 0 } ?: 0L
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(clock(pos), color = Color.White, fontSize = 15.sp)
+                        LinearProgressIndicator(
+                            progress = { if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f },
+                            modifier = Modifier.weight(1f).padding(horizontal = 14.dp),
+                        )
+                        Text(if (dur > 0) clock(dur) else "--:--", color = Color.White, fontSize = 15.sp)
+                    }
+                    Spacer(Modifier.size(12.dp))
+                }
+                if (full) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TvBarButton(Icons.AutoMirrored.Filled.ArrowBack, "Wstecz") { finish() }
+                        if (item.isLive) {
+                            if (items.size > 1) TvBarButton(Icons.Filled.SkipPrevious, "Poprz. kanał") { zap(-1) }
+                        } else {
+                            TvBarButton(androidx.compose.material.icons.Icons.Filled.Replay10, "−10 s") { seekBy(-10_000) }
+                        }
+                        TvBarButton(
+                            if (player.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            if (player.isPlaying) "Pauza" else "Odtwórz",
+                            Modifier.focusRequester(playFocus),
+                        ) { togglePlay() }
+                        if (item.isLive) {
+                            if (items.size > 1) TvBarButton(Icons.Filled.SkipNext, "Nast. kanał") { zap(+1) }
+                        } else {
+                            TvBarButton(Icons.Filled.Forward30, "+30 s") { seekBy(30_000) }
+                            if (items.size > 1 && index < items.lastIndex) {
+                                TvBarButton(Icons.Filled.SkipNext, "Następny") { zap(+1) }
+                            }
+                        }
+                        if (item.kind == com.mojatv.app.data.ContentKind.LIVE) {
+                            TvBarButton(Icons.Filled.FiberManualRecord, "Program TV") { recordDialog = true }
+                        }
+                        TvBarButton(Icons.Filled.AspectRatio, "Obraz") {
+                            resizeMode = when (resizeMode) {
+                                AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            }
+                        }
+                        TvBarButton(androidx.compose.material.icons.Icons.Filled.MoreVert, "Opcje") { tvMenu = true }
+                    }
+                } else {
+                    Text(
+                        if (item.isLive) "OK — przyciski · ▲▼ zmiana kanału · ≡ opcje"
+                        else "OK — przyciski · ◀▶ przewijanie · ≡ opcje",
+                        color = Color(0xFFB0B6C0), fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun TvBarButton(
+        icon: androidx.compose.ui.graphics.vector.ImageVector,
+        label: String,
+        modifier: Modifier = Modifier,
+        onClick: () -> Unit,
+    ) {
+        Column(
+            modifier
+                .width(104.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                .background(Color(0x33FFFFFF))
+                .clickable { tvUiStamp++; onClick() }
+                .padding(vertical = 10.dp, horizontal = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(icon, null, tint = Color.White, modifier = Modifier.size(30.dp))
+            Text(label, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 

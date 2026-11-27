@@ -40,3 +40,17 @@ fun Context.openExternal(item: PlayItem) {
         Toast.makeText(this, "Brak zewnętrznego odtwarzacza (zainstaluj np. VLC)", Toast.LENGTH_LONG).show()
     }
 }
+
+/** Fire TV: otwiera od razu w VLC (bez okna wyboru), a gdy VLC nie ma — zwykły wybór odtwarzacza. */
+fun Context.openInVlc(item: PlayItem) {
+    val intent = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(Uri.parse(item.url), "video/*")
+        .setPackage("org.videolan.vlc")
+        .putExtra("title", item.title)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        startActivity(intent)
+    } catch (e: Exception) {
+        openExternal(item)
+    }
+}
