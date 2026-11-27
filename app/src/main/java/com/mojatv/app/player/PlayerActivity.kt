@@ -451,6 +451,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun enterPip() {
+        if (android.os.Build.VERSION.SDK_INT < 26) return
         try {
             enterPictureInPictureMode(
                 PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()

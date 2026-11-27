@@ -53,9 +53,9 @@ object RecordingScheduler {
         val pi = alarmIntent(context, rec.id)
         val exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
         if (exactAllowed) {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, rec.start, pi)
+            androidx.core.app.AlarmManagerCompat.setExactAndAllowWhileIdle(am, AlarmManager.RTC_WAKEUP, rec.start, pi)
         } else {
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, rec.start, pi)
+            androidx.core.app.AlarmManagerCompat.setAndAllowWhileIdle(am, AlarmManager.RTC_WAKEUP, rec.start, pi)
         }
     }
 
@@ -118,6 +118,7 @@ object RecordingScheduler {
     }
 
     fun ignoresBatteryOptimizations(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 23) return true
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }

@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.mojatv.app"
-        minSdk = 26
+        minSdk = 22 // Fire TV Stick ze starszym Fire OS 5/6 (Android 5.1/7.1)
         targetSdk = 35
         versionCode = 2
         versionName = "1.1"
@@ -27,6 +27,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // java.time (program TV) na starszych Fire TV
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -44,6 +46,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
     val media3 = "1.5.1"
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
